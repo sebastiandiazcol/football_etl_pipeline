@@ -70,6 +70,6 @@ def download_match_json(game_id: int):
 if __name__ == "__main__":
     # ⚠️ REEMPLAZA ESTE NÚMERO POR UN ID DE PARTIDO REAL QUE TENGAS EN TU BD
     # Por ejemplo, busca en tu SQLite actual un 'id' de la tabla 'matches'
-    ID_DEL_PARTIDO_DE_PRUEBA = 4044230 
+    ID_DEL_PARTIDO_DE_PRUEBA = 4663197
     
     download_match_json(ID_DEL_PARTIDO_DE_PRUEBA)
