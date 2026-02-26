@@ -5,11 +5,9 @@ import json
 import requests
 from datetime import datetime
 
-# Importar configuraciones de Base de Datos
 from db.database import init_db, SessionBronze, SessionSilver, SessionGold
 from db.models.bronze_models import RawMatchData
 
-# Importar Motores ETL
 from transform.bronze_to_silver import BronzeToSilverETL
 from transform.silver_to_gold import SilverToGoldETL
 
@@ -18,9 +16,7 @@ from utils.logger import setup_logger
 logger = setup_logger("MainPipeline")
 
 def fetch_and_save_bronze(match_id: int, db_bronze) -> tuple:
-    """
-    Extrae datos de la API (incluyendo los 3 periodos) y los guarda en Bronze.
-    """
+    """Extrae datos de la API (incluyendo los 3 periodos) y los guarda en Bronze."""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     url_general = f"https://webws.365scores.com/web/game/?appTypeId=5&langId=14&timezoneName=America/Bogota&gameId={match_id}"
     
@@ -30,7 +26,7 @@ def fetch_and_save_bronze(match_id: int, db_bronze) -> tuple:
         res_general.raise_for_status()
         general_json_dict = res_general.json()
         
-        # --- LÓGICA RESTAURADA: Extraer los 3 periodos ---
+        # Lógica para extraer los 3 periodos
         period_filters = {
             "Partido_Completo": None,
             "Primer_Tiempo": 6,
@@ -49,7 +45,7 @@ def fetch_and_save_bronze(match_id: int, db_bronze) -> tuple:
             else:
                 stats_json_dict[period_name] = {}
 
-        # 2. Guardar en Bronze
+        # Guardar en Bronze
         existing_raw = db_bronze.query(RawMatchData).filter_by(match_id=str(match_id)).first()
         if existing_raw:
             db_bronze.delete(existing_raw)
@@ -65,21 +61,19 @@ def fetch_and_save_bronze(match_id: int, db_bronze) -> tuple:
         )
         db_bronze.add(raw_data_general)
         db_bronze.commit()
-        logger.info(f"[{match_id}] 🥉 Guardado en BRONZE exitoso.")
+        logger.info(f"[{match_id}] Guardado en BRONZE exitoso.")
         
         return json.dumps(general_json_dict), json.dumps(stats_json_dict)
 
     except Exception as e:
-        logger.error(f"[{match_id}] Error en la extracción a Bronze: {e}")
+        logger.error(f"[{match_id}] Error en la extraccion a Bronze: {e}")
         db_bronze.rollback()
         return None, None
 
 def run_full_pipeline(match_id: int):
-    """
-    Orquestador principal del ETL para un partido específico.
-    """
+    """Orquestador principal del ETL para un partido especifico."""
     logger.info(f"{'='*50}")
-    logger.info(f"🚀 INICIANDO PIPELINE MEDALLION PARA MATCH ID: {match_id}")
+    logger.info(f"INICIANDO PIPELINE MEDALLION PARA MATCH ID: {match_id}")
     logger.info(f"{'='*50}")
 
     db_bronze = SessionBronze()
@@ -87,74 +81,67 @@ def run_full_pipeline(match_id: int):
     db_gold = SessionGold()
 
     try:
-        # PASO 1: EXTRACT -> BRONZE
         general_json, stats_json = fetch_and_save_bronze(match_id, db_bronze)
         
         if not general_json:
-            logger.error("Abortando pipeline por fallo en extracción.")
+            logger.error("Abortando pipeline por fallo en extraccion.")
             return
 
-        # PASO 2: BRONZE -> SILVER
         silver_etl = BronzeToSilverETL(db_silver)
         silver_etl.process_match(general_json, stats_json)
         
-        # PASO 3: SILVER -> GOLD
         gold_etl = SilverToGoldETL(db_silver, db_gold)
         gold_etl.process_match_to_gold(match_id)
         
-        logger.info(f"🎉 PIPELINE COMPLETADO CON ÉXITO PARA MATCH {match_id}")
+        logger.info(f"PIPELINE COMPLETADO CON EXITO PARA MATCH {match_id}")
 
     finally:
         db_bronze.close()
         db_silver.close()
         db_gold.close()
 
-    def process_team_matches(team_id: int, max_matches: int = 10):
-        """
-        Busca los últimos N partidos finalizados de un equipo y los procesa en el pipeline.
-        """
-        logger.info(f"Buscando los últimos {max_matches} partidos del equipo {team_id}...")
-        url = "https://webws.365scores.com/web/games/results/"
-        params = {
-            'appTypeId': 5,
-            'langId': 14,
-            'timezoneName': 'America/Bogota',
-            'competitors': team_id,
-            'showOdds': 'true'
-        }
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+def process_team_matches(team_id: int, max_matches: int = 10):
+    """Busca los ultimos N partidos finalizados de un equipo y los procesa en el pipeline."""
+    logger.info(f"Buscando los ultimos {max_matches} partidos del equipo {team_id}...")
+    url = "https://webws.365scores.com/web/games/results/"
+    params = {
+        'appTypeId': 5,
+        'langId': 14,
+        'timezoneName': 'America/Bogota',
+        'competitors': team_id,
+        'showOdds': 'true'
+    }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        games = data.get('games', [])
         
-        try:
-            response = requests.get(url, params=params, headers=headers, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            games = data.get('games', [])
+        if not games:
+            logger.warning(f"No se encontraron partidos para el equipo {team_id}")
+            return
             
-            if not games:
-                logger.warning(f"No se encontraron partidos para el equipo {team_id}")
-                return
-                
-            # Filtrar solo partidos finalizados (statusGroup == 4)
-            finished_games = [g for g in games if g.get('statusGroup') == 4]
-            logger.info(f"Se encontraron {len(finished_games)} partidos finalizados en el historial reciente.")
+        finished_games = [g for g in games if g.get('statusGroup') == 4]
+        logger.info(f"Se encontraron {len(finished_games)} partidos finalizados en el historial reciente.")
+        
+        games_to_process = finished_games[:max_matches]
+        
+        for i, game in enumerate(games_to_process, 1):
+            match_id = game.get('id')
+            home = game.get('homeCompetitor', {}).get('name', 'Local')
+            away = game.get('awayCompetitor', {}).get('name', 'Visitante')
             
-            # Procesar hasta el límite de max_matches
-            games_to_process = finished_games[:max_matches]
+            logger.info(f"\n[{i}/{len(games_to_process)}] Iniciando pipeline para: {home} vs {away} (ID: {match_id})")
+            run_full_pipeline(match_id)
             
-            for i, game in enumerate(games_to_process, 1):
-                match_id = game.get('id')
-                home = game.get('homeCompetitor', {}).get('name', 'Local')
-                away = game.get('awayCompetitor', {}).get('name', 'Visitante')
-                
-                logger.info(f"\n[{i}/{len(games_to_process)}] Iniciando pipeline para: {home} vs {away} (ID: {match_id})")
-                run_full_pipeline(match_id)
-                
-            logger.info(f"\nPROCESAMIENTO MASIVO COMPLETADO PARA EL EQUIPO {team_id}.")
-            
-        except Exception as e:
-            logger.error(f"Error buscando partidos del equipo {team_id}: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+        logger.info(f"\nPROCESAMIENTO MASIVO COMPLETADO PARA EL EQUIPO {team_id}.")
+        
+    except Exception as e:
+        logger.error(f"Error buscando partidos del equipo {team_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 def main():
     parser = argparse.ArgumentParser(description="Football Data Medallion ETL Pipeline")
