@@ -7,7 +7,7 @@ def download_match_json(game_id: int):
     Descarga los JSONs crudos de 365Scores para un partido específico 
     y los guarda en formato legible.
     """
-    print(f"🔍 Iniciando extracción de prueba para el partido ID: {game_id}")
+    print(f"[*] Iniciando extracci\u00f3n de prueba para el partido ID: {game_id}")
     
     # Asegurarnos de tener una carpeta para guardar esto
     os.makedirs("data_samples", exist_ok=True)
@@ -35,10 +35,10 @@ def download_match_json(game_id: int):
         # Guardar JSON con indentación para que sea human-readable
         with open(f"data_samples/match_{game_id}_general.json", "w", encoding="utf-8") as f:
             json.dump(game_data, f, indent=4, ensure_ascii=False)
-        print(f"✅ General Data guardado: data_samples/match_{game_id}_general.json")
+        print(f"[OK] General Data guardado: data_samples/match_{game_id}_general.json")
         
     except Exception as e:
-        print(f"❌ Error descargando datos generales: {e}")
+        print(f"[FAIL] Error descargando datos generales: {e}")
 
     # ---------------------------------------------------------
     # 2. ENDPOINT DE ESTADÍSTICAS (Las 118 variables)
@@ -59,10 +59,10 @@ def download_match_json(game_id: int):
         
         with open(f"data_samples/match_{game_id}_stats.json", "w", encoding="utf-8") as f:
             json.dump(stats_data, f, indent=4, ensure_ascii=False)
-        print(f"✅ Stats Data guardado: data_samples/match_{game_id}_stats.json")
+        print(f"[OK] Stats Data guardado: data_samples/match_{game_id}_stats.json")
             
     except Exception as e:
-        print(f"❌ Error descargando estadísticas: {e}")
+        print(f"[FAIL] Error descargando estad\u00edsticas: {e}")
 
 # ==========================================
 # EJECUCIÓN
