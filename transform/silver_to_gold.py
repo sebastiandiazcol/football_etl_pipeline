@@ -105,7 +105,8 @@ class SilverToGoldETL:
                 away_score=away_score,
                 total_goals=(home_score + away_score),
                 is_draw=is_draw,
-                winning_team_id=winning_team_id
+                winning_team_id=winning_team_id,
+                referee_name=match_silver.referee_name
             )
             self.db_gold.add(fact_match)
 
@@ -120,7 +121,7 @@ class SilverToGoldETL:
                 self.db_gold.bulk_insert_mappings(FactShot, gold_shots)
 
             silver_lineups = self.db_silver.query(MatchLineupSilver).filter_by(match_id=match_id).all()
-            gold_lineups = [{"match_id": l.match_id, "team_id": l.team_id, "player_id": l.player_id, "jersey_number": l.jersey_number, "status_text": l.status_text, "formation_line": l.formation_line, "field_line": l.field_line, "field_side": l.field_side, "minutes_played": l.minutes_played} for l in silver_lineups]
+            gold_lineups = [{"match_id": l.match_id, "team_id": l.team_id, "player_id": l.player_id, "jersey_number": l.jersey_number, "status_text": l.status_text, "formation_line": l.formation_line, "field_line": l.field_line, "field_side": l.field_side, "minutes_played": l.minutes_played, "fouls_committed": l.fouls_committed, "fouls_received": l.fouls_received, "passes_completed": l.passes_completed, "key_passes": l.key_passes, "xa": l.xa, "interceptions": l.interceptions, "clearances": l.clearances} for l in silver_lineups]
             if gold_lineups:
                 self.db_gold.bulk_insert_mappings(FactLineup, gold_lineups)
 

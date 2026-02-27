@@ -30,7 +30,8 @@ football_etl_pipeline/
 │   ├── bronze_to_silver.py       # ETL: Desanidado JSON y limpieza de tipos de datos
 │   ├── silver_to_gold.py         # ETL: Carga de Hechos y Upsert Inteligente de Dimensiones
 │   ├── create_dim_date.py        # Generador de Dimension Calendario para Time Intelligence
-│   └── create_betting_facts.py   # Ingenieria de variables para Apuestas Deportivas
+│   ├── create_betting_facts.py   # Ingenieria de variables para Apuestas Deportivas
+│   └── create_powerbi_mart.py    # Generador del Data Mart de Player Props para Power BI
 │
 ├── utils/
 │   └── logger.py                 # Trazabilidad y monitoreo del pipeline
@@ -110,8 +111,11 @@ uv run transform/create_betting_facts.py
 
 Esto genera dos tablas analiticas en la capa Gold:
 
-1. **`fact_betting_team`:** Calcula exactamente las estadisticas "A Favor" y "Concedidas" (Tiros, Corners, Amarillas) e identifica si se cumplieron mercados como Ambos Marcan (BTTS) y Over/Under 2.5.
+1. **`fact_betting_team`:** Calcula exactamente las estadisticas "A Favor" y "Concedidas" (Tiros, Corners, Amarillas). Identifica si se cumplieron mercados como Ambos Marcan (BTTS) y Over/Under 2.5, **incluyendo mercados de Mitades (Half-Time Data)** y modelado de tiempos de anotacion (First To Score).
 2. **`fact_betting_player`:** Resume las estadisticas vitales del jugador por partido (Tiros Totales, Tiros a Puerta/SOT, xG Acumulado) para el mercado de *Player Props*.
+3. **`mart_referee_stats`:** Agrupacion historica de la tendencia de tarjetas (Amarillas/Rojas) por Árbitro.
+4. **`mart_betting_trends`:** Promedios moviles (Rolling Averages) de rendimiento de los ultimos 3 y 5 partidos del equipo calculados dinamicamente para evaluar la forma reciente del equipo.
+5. **`powerbi_mart_player_props`:** Data Mart desnormalizado y enriquecido para analisis directo. Ademas de tiros y goles, incluye ingenieria de caracteristicas defensivas y creativas (Faltas, Pases, Pases Clave, xA, Intercepciones, Despejes) y banderas de titularidad (`is_starter`). Ejecutable via `uv run transform/create_powerbi_mart.py`.
 
 ## 🗺️ Ciencia de Datos y Analisis Espacial
 

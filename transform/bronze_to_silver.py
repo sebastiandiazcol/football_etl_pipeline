@@ -103,6 +103,58 @@ class BronzeToSilverETL:
             # Extraer coordenadas en el campo (yardFormation)
             yard = player.get('yardFormation', {})
             
+            # Extraer minutos jugados ('type': 30 or 'name': 'Minutes')
+            minutes_played = None
+            fouls_committed = None
+            fouls_received = None
+            passes_completed = None
+            key_passes = None
+            xa = None
+            interceptions = None
+            clearances = None
+            
+            if 'stats' in player:
+                for stat in player['stats']:
+                    stype = stat.get('type')
+                    sname = stat.get('name')
+                    raw_val = str(stat.get('value', '')).strip()
+                    
+                    if stype == 30 or sname == 'Minutes':
+                        val = raw_val.replace("'", "")
+                        try:
+                            if val: minutes_played = int(val)
+                        except ValueError: pass
+                    elif stype == 42 or sname == 'Faltas cometidas':
+                        try:
+                            if raw_val: fouls_committed = int(raw_val)
+                        except ValueError: pass
+                    elif stype == 37 or sname == 'Faltas recibidas':
+                        try:
+                            if raw_val: fouls_received = int(raw_val)
+                        except ValueError: pass
+                    elif stype == 19 or sname == 'Pases completados':
+                        # Formato: "36/46 (78%)" -> nos quedamos solo con "36"
+                        val = raw_val.split('/')[0] if '/' in raw_val else raw_val
+                        try:
+                            if val: passes_completed = int(val)
+                        except ValueError: pass
+                    elif stype == 46 or sname == 'Pases claves':
+                        try:
+                            if raw_val: key_passes = int(raw_val)
+                        except ValueError: pass
+                    elif stype == 78 or sname == 'Asistencias esperadas':
+                        try:
+                            if raw_val: xa = float(raw_val.replace(',', '.'))
+                        except ValueError: pass
+                    elif stype == 41 or sname == 'Intercepciones':
+                        try:
+                            if raw_val: interceptions = int(raw_val)
+                        except ValueError: pass
+                    elif stype == 40 or sname == 'Despejes':
+                        try:
+                            if raw_val: clearances = int(raw_val)
+                        except ValueError: pass
+                        
             lineup_entry = {
                 "match_id": match_id,
                 "team_id": team_id,
@@ -112,7 +164,15 @@ class BronzeToSilverETL:
                 "status_text": player.get('statusText'), # "Starting", "Substitute", etc.
                 "formation_line": yard.get('line'),      # 1=Portero, 2=Defensa, 3=Medio, 4=Delantero
                 "field_line": yard.get('fieldLine'),     # Eje Y (0-100)
-                "field_side": yard.get('fieldSide')      # Eje X (0-100)
+                "field_side": yard.get('fieldSide'),      # Eje X (0-100)
+                "minutes_played": minutes_played,
+                "fouls_committed": fouls_committed,
+                "fouls_received": fouls_received,
+                "passes_completed": passes_completed,
+                "key_passes": key_passes,
+                "xa": xa,
+                "interceptions": interceptions,
+                "clearances": clearances
             }
             lineups_list.append(lineup_entry)
             

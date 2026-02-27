@@ -81,6 +81,13 @@ class MatchLineupSilver(BaseSilver):
     field_line = Column(Float, nullable=True)
     field_side = Column(Float, nullable=True)
     minutes_played = Column(Integer, nullable=True)
+    fouls_committed = Column(Integer, nullable=True)
+    fouls_received = Column(Integer, nullable=True)
+    passes_completed = Column(Integer, nullable=True)
+    key_passes = Column(Integer, nullable=True)
+    xa = Column(Float, nullable=True)
+    interceptions = Column(Integer, nullable=True)
+    clearances = Column(Integer, nullable=True)
     
     match = relationship("MatchSilver", back_populates="lineups")
 
