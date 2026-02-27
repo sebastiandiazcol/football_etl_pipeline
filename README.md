@@ -130,13 +130,33 @@ uv run analysis/shot_map.py
 
 Este script utiliza `mplsoccer` para dibujar un medio campo vertical (Vertical Half Pitch), mapeando los disparos a traves de coordenadas corregidas (X/Y invertidas) y escalando el tamano de los puntos segun la metrica xG. Incluye tooltips interactivos con `mplcursors`.
 
-## 📈 Integracion con Power BI
+## 📈 Integracion con Power BI (Vía SQL Server / Docker)
 
-La base de datos esta preparada para conectividad directa (DirectQuery o Importacion) en Power BI.
+Para evitar los comunes errores de tipos de datos del Driver ODBC de SQLite (Ej: `0x80040E1D`), este proyecto incluye un módulo automatizado que migra la base de datos `03_gold.db` en su totalidad a una instancia de **Microsoft SQL Server** ejecutándose en un contenedor de **Docker**. Esta es la opción más robusta ("Enterprise") para modelos de Power BI grandes.
 
+### 1. Configurar Docker
+Docker nos permite tener un SQL Server aislado en nuestra máquina sin complejas instalaciones. Los datos persisten de manera segura por reinicios usando volúmenes de Docker.
+Ejecuta esto en tu terminal por única vez para crear el servidor local:
+
+```powershell
+docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=SuperSecret123!" -p 1433:1433 -d --name sql_futbol mcr.microsoft.com/mssql/server:2022-latest
+```
+
+### 2. Migrar los Datos (Volcado SQLite -> SQL Server)
+Cada vez que proceses nuevos equipos o partidos a través de los scripts `main.py`, la capa Bronze, Silver y Gold de SQLite se actualizarán localmente. Para empujar esas nuevas métricas y jugadores frescos a SQL Server, solo ejecuta tu script migrador usando `uv`:
+
+```powershell
+uv run transform/sqlite_to_sqlserver.py
+```
+*(Nota: Este script usa `pyodbc` y `sqlalchemy` para leer `03_gold.db` y crear/actualizar la base de datos **FootballGold** en SQL Server de manera completamente automática)*.
+
+### 3. Conexión a Power BI
 1. Abrir Power BI Desktop.
-2. Obtener Datos -> Origen de datos ODBC o Script de Python.
-3. Conectar al archivo `data/03_gold.db`.
-4. En la vista del modelo, relacionar las dimensiones (`dim_teams`, `dim_players`, `dim_date`) con las tablas de hechos y las tablas de apuestas (`fact_betting_team`, `fact_betting_player`). El modelo no requiere DAX complejo gracias al trabajo previo del pipeline ETL.
+2. Hacer click en **Obtener Datos -> SQL Server**.
+3. **Servidor:** `localhost`
+4. **Base de Datos:** `FootballGold`
+5. En autenticación elige **Base de Datos** con usuario `sa` y la contraseña de Docker (`SuperSecret123!`).
+
+Con esta integración gozarás del máximo rendimiento sin escribir una sola consulta y todo mantendrá sus relaciones del *Star Schema* (Modelo en Estrella) purista, sin romper los filtros visuales.
 
 ---
