@@ -68,6 +68,21 @@ def create_powerbi_mart():
     # Crea un booleano para los jugadores titulares
     df_base['is_starter'] = (df_base['status_text'].str.lower() == 'starting').astype(int)
 
+    # 6.5 Tendencias de Jugadores (Rolling Averages)
+    # Ordenar por jugador y fecha
+    df_base['match_date'] = pd.to_datetime(df_base['match_date'])
+    df_base = df_base.sort_values(by=['player_id', 'match_date'])
+    
+    player_rolling_cols = ['total_shots', 'shots_on_target', 'key_passes', 'fouls_committed', 'passes_completed']
+    
+    for col in player_rolling_cols:
+        # Últimos 3 partidos
+        df_base[f'{col}_roll3'] = df_base.groupby('player_id')[col].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+        # Últimos 5 partidos
+        df_base[f'{col}_roll5'] = df_base.groupby('player_id')[col].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
+        
+    df_base = df_base.fillna(0)
+
     # 7. Carga
     # Selecciona solo las columnas útiles y renombra/ordena
     col_seleccionadas = [
@@ -75,7 +90,12 @@ def create_powerbi_mart():
         'home_team', 'away_team', 'is_home', 'is_starter', 'minutes_played', 
         'fouls_committed', 'fouls_received', 'passes_completed',
         'key_passes', 'xa', 'interceptions', 'clearances',
-        'total_shots', 'shots_on_target', 'goals', 'total_xg'
+        'total_shots', 'shots_on_target', 'goals', 'total_xg',
+        'total_shots_roll3', 'total_shots_roll5',
+        'shots_on_target_roll3', 'shots_on_target_roll5',
+        'key_passes_roll3', 'key_passes_roll5',
+        'fouls_committed_roll3', 'fouls_committed_roll5',
+        'passes_completed_roll3', 'passes_completed_roll5'
     ]
     df_final = df_base[col_seleccionadas]
     

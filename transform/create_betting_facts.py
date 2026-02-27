@@ -158,8 +158,24 @@ def create_betting_tables(db_path="data/03_gold.db"):
             goals_scored=('is_goal', 'sum'),
             total_xg=('xg', 'sum')
         ).reset_index()
+        
+        # Agrupar por equipo para el xG Differential
+        df_team_xg = df_shots.groupby(['match_id', 'team_id']).agg(
+            team_xg=('xg', 'sum')
+        ).reset_index()
     else:
         df_betting_player = pd.DataFrame(columns=['match_id', 'team_id', 'player_id', 'total_shots', 'shots_on_target', 'goals_scored', 'total_xg'])
+        df_team_xg = pd.DataFrame(columns=['match_id', 'team_id', 'team_xg'])
+        
+    # === INTEGRAR xG A EQUIPOS ===
+    df_betting_team = pd.merge(df_betting_team, df_team_xg.rename(columns={'team_xg': 'xg_for'}), on=['match_id', 'team_id'], how='left')
+    df_betting_team = pd.merge(df_betting_team, df_team_xg.rename(columns={'team_id': 'opponent_id', 'team_xg': 'xg_conceded'}), on=['match_id', 'opponent_id'], how='left')
+    df_betting_team['xg_for'] = df_betting_team['xg_for'].fillna(0)
+    df_betting_team['xg_conceded'] = df_betting_team['xg_conceded'].fillna(0)
+    
+    # Índice de "Suerte" (Regresión Matemática)
+    df_betting_team['overperformance_for'] = df_betting_team['goals_for'] - df_betting_team['xg_for']
+    df_betting_team['overperformance_conceded'] = df_betting_team['xg_conceded'] - df_betting_team['goals_conceded']
 
     # ==========================================
     # 3. CONSTRUCCIÓN DE LA TABLA DE ÁRBITROS (REFEREE STATS)
@@ -222,11 +238,28 @@ def create_betting_tables(db_path="data/03_gold.db"):
     
     df_trends = df_betting_team_sorted[['match_id', 'team_id', 'match_date']].copy()
     
+    # Separar partidos como local y visitante
+    df_home = df_betting_team_sorted[df_betting_team_sorted['is_home'] == 1].copy()
+    df_away = df_betting_team_sorted[df_betting_team_sorted['is_home'] == 0].copy()
+    
     for col in rolling_cols:
+        # Tendencia General
         # Últimos 3 partidos
         df_trends[f'{col}_roll3'] = df_betting_team_sorted.groupby('team_id')[col].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
         # Últimos 5 partidos
         df_trends[f'{col}_roll5'] = df_betting_team_sorted.groupby('team_id')[col].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
+        
+        # Tendencia Específica Local
+        col_home_name = f'{col}_roll3_home'
+        df_home[col_home_name] = df_home.groupby('team_id')[col].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+        
+        # Tendencia Específica Visitante
+        col_away_name = f'{col}_roll3_away'
+        df_away[col_away_name] = df_away.groupby('team_id')[col].transform(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    
+    # Unir las tendencias específicas de vuelta al DF principal
+    df_trends = pd.merge(df_trends, df_home[['match_id', 'team_id'] + [f'{c}_roll3_home' for c in rolling_cols]], on=['match_id', 'team_id'], how='left')
+    df_trends = pd.merge(df_trends, df_away[['match_id', 'team_id'] + [f'{c}_roll3_away' for c in rolling_cols]], on=['match_id', 'team_id'], how='left')
     
     df_trends = df_trends.fillna(0)
     
