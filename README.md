@@ -60,24 +60,16 @@ uv pip install sqlalchemy requests pandas matplotlib mplsoccer mplcursors
 
 ## ⚙️ Uso del Pipeline ETL (CLI)
 
-El orquestador `main.py` maneja la ejecucion del pipeline. Se puede procesar un solo partido o hacer extracción masiva histórica por equipo.
+La forma principal y más sencilla de interactuar con el pipeline es a través del **Preparador de Partidos** (`tools/prepare_match.py`), un asistente interactivo que te permite buscar equipos por nombre (conectándose a la API de 365scores para encontrar su ID), para luego descargar y procesar automáticamente sus últimos partidos.
 
-**Procesar un partido especifico:**
-
-```powershell
-uv run main.py --mode process_match --match 4663209
-
-```
-
-**Extraccion masiva (Scraping Historico):**
-Busca los ultimos N partidos finalizados de un equipo y ejecuta el pipeline completo (Bronze -> Silver -> Gold) para cada uno.
+Para iniciar el asistente interactivo, ejecuta en tu terminal:
 
 ```powershell
-uv run main.py --mode process_team --team 131 --matches 10
-
+python tools/prepare_match.py
 ```
+*(También puedes usar `uv run tools/prepare_match.py` si prefieres usar el gestor de paquetes virtual).*
 
-*(Nota: El ID 131 corresponde al Real Madrid).*
+El script te irá guiando paso a paso. El orquestador interno `main.py` manejará toda la ejecución del pipeline (Bronze -> Silver -> Gold) por detrás una vez que confirmes los equipos.
 
 ## 📊 Modelo de Datos (Capa GOLD)
 
@@ -116,19 +108,6 @@ Esto genera dos tablas analiticas en la capa Gold:
 3. **`mart_referee_stats`:** Agrupacion historica de la tendencia de tarjetas (Amarillas/Rojas) por Árbitro.
 4. **`mart_betting_trends`:** Promedios moviles (Rolling Averages) de rendimiento de los ultimos 3 y 5 partidos del equipo calculados dinamicamente para evaluar la forma reciente del equipo.
 5. **`powerbi_mart_player_props`:** Data Mart desnormalizado y enriquecido para analisis directo. Ademas de tiros y goles, incluye ingenieria de caracteristicas defensivas y creativas (Faltas, Pases, Pases Clave, xA, Intercepciones, Despejes) y banderas de titularidad (`is_starter`). Ejecutable via `uv run transform/create_powerbi_mart.py`.
-
-## 🗺️ Ciencia de Datos y Analisis Espacial
-
-El proyecto incluye scripts de visualizacion avanzada en Python, aislando los calculos matematicos del motor de Power BI.
-
-Ejecutar el mapa interactivo de tiros:
-
-```powershell
-uv run analysis/shot_map.py
-
-```
-
-Este script utiliza `mplsoccer` para dibujar un medio campo vertical (Vertical Half Pitch), mapeando los disparos a traves de coordenadas corregidas (X/Y invertidas) y escalando el tamano de los puntos segun la metrica xG. Incluye tooltips interactivos con `mplcursors`.
 
 ## 📈 Integracion con Power BI (Vía SQL Server / Docker)
 
