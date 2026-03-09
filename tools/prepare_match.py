@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import process_team_matches
 from transform.create_betting_facts import create_betting_tables
 from transform.create_powerbi_mart import create_powerbi_mart
+from transform.create_team_matches_mart import create_team_matches_mart
 from transform.sqlite_to_sqlserver import migrate_to_sqlserver
 from db.database import init_db
 
@@ -113,6 +114,9 @@ def main():
         
         print("\n--- ACTUALIZANDO TABLAS DE APUESTAS (POWER BI) ---")
         create_betting_tables()
+        
+        print("\n--- CREANDO BASE DE PARTIDOS UNIFICADA (FACT_TEAM_MATCHES) ---")
+        create_team_matches_mart()
         
         print("\n--- CREANDO DATA MART PARA PLAYER PROPS ---")
         create_powerbi_mart()
