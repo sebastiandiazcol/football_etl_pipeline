@@ -92,14 +92,7 @@ El Esquema Estrella resultante en `03_gold.db` esta compuesto por:
 
 ## 🎯 Modulo de Apuestas Deportivas (Sports Betting Module)
 
-Para extraer "Value Bets" y predecir rendimientos, el pipeline cuenta con un script de ingenieria de caracteristicas que desnormaliza la informacion en tablas listas para el analisis cuantitativo.
-
-Ejecutar generador de apuestas:
-
-```powershell
-uv run transform/create_betting_facts.py
-
-```
+Para extraer "Value Bets" y predecir rendimientos, el pipeline cuenta con un script de ingenieria de caracteristicas que desnormaliza la informacion en tablas listas para el analisis cuantitativo (***Esto se ejecuta automáticamente al usar el asistente `prepare_match.py`***).
 
 Esto genera dos tablas analiticas en la capa Gold:
 
@@ -107,7 +100,7 @@ Esto genera dos tablas analiticas en la capa Gold:
 2. **`fact_betting_player`:** Resume las estadisticas vitales del jugador por partido (Tiros Totales, Tiros a Puerta/SOT, xG Acumulado) para el mercado de *Player Props*.
 3. **`mart_referee_stats`:** Agrupacion historica de la tendencia de tarjetas (Amarillas/Rojas) por Árbitro.
 4. **`mart_betting_trends`:** Promedios moviles (Rolling Averages) de rendimiento de los ultimos 3 y 5 partidos del equipo calculados dinamicamente para evaluar la forma reciente del equipo.
-5. **`powerbi_mart_player_props`:** Data Mart desnormalizado y enriquecido para analisis directo. Ademas de tiros y goles, incluye ingenieria de caracteristicas defensivas y creativas (Faltas, Pases, Pases Clave, xA, Intercepciones, Despejes) y banderas de titularidad (`is_starter`). Ejecutable via `uv run transform/create_powerbi_mart.py`.
+5. **`powerbi_mart_player_props`:** Data Mart desnormalizado y enriquecido para analisis directo. Ademas de tiros y goles, incluye ingenieria de caracteristicas defensivas y creativas (Faltas, Pases, Pases Clave, xA, Intercepciones, Despejes) y banderas de titularidad (`is_starter`).
 
 ## 📈 Integracion con Power BI (Vía SQL Server / Docker)
 
@@ -121,13 +114,9 @@ Ejecuta esto en tu terminal por única vez para crear el servidor local:
 docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=SuperSecret123!" -p 1433:1433 -d --name sql_futbol mcr.microsoft.com/mssql/server:2022-latest
 ```
 
-### 2. Migrar los Datos (Volcado SQLite -> SQL Server)
-Cada vez que proceses nuevos equipos o partidos a través de los scripts `main.py`, la capa Bronze, Silver y Gold de SQLite se actualizarán localmente. Para empujar esas nuevas métricas y jugadores frescos a SQL Server, solo ejecuta tu script migrador usando `uv`:
-
-```powershell
-uv run transform/sqlite_to_sqlserver.py
-```
-*(Nota: Este script usa `pyodbc` y `sqlalchemy` para leer `03_gold.db` y crear/actualizar la base de datos **FootballGold** en SQL Server de manera completamente automática)*.
+### 2. Migración de los Datos a SQL Server
+Cada vez que proceses y busques nuevos equipos o partidos a través del asistente `tools/prepare_match.py`, la capa Bronze, Silver y Gold de SQLite se actualizarán localmente y **automáticamente el asistente empujará esas nuevas métricas** a SQL Server por detrás creando/actualizando la base de datos `FootballGold`.
+*(Nota: El asistente usa `pyodbc` y `sqlalchemy` para leer de `03_gold.db` y realizar el volcado masivo)*.
 
 ### 3. Conexión a Power BI
 1. Abrir Power BI Desktop.
