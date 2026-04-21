@@ -9,7 +9,7 @@ from db.database import init_db, SessionBronze, SessionSilver, SessionGold
 from db.models.bronze_models import RawMatchData
 
 from transform.bronze_to_silver import BronzeToSilverETL
-from transform.silver_to_gold import SilverToGoldETL
+from transform.silver_to_gold import SilverToGoldETL, compute_rolling_averages, compute_dim_referee, generate_dim_date
 
 from utils.logger import setup_logger
 
@@ -171,6 +171,13 @@ def main():
             logger.error("[ERROR] Debes proporcionar el ID del equipo con --team")
             return
         process_team_matches(args.team, args.matches)
+        
+        # Post-procesamiento Gold
+        logger.info("Ejecutando post-procesamiento Gold...")
+        compute_rolling_averages()
+        compute_dim_referee()
+        generate_dim_date()
+        logger.info("Post-procesamiento completado.")
 
 if __name__ == "__main__":
     main()

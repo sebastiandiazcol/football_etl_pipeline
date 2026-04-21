@@ -1,114 +1,98 @@
 # Diccionario de Datos - Capa Analítica (Gold)
 
-Este documento describe la estructura y el propósito de las tablas principales ubicadas en la base de datos analítica `03_gold.db`, las cuales están optimizadas para ser consumidas directamente en Power BI o entornos de Data Science.
+Este documento describe la estructura y el propósito de las tablas principales ubicadas en la base de datos analítica `03_gold.db`, así como su réplica alojada en SQL Server. Están desnormalizadas y optimizadas para Inteligencia de Negocios y Ciencia de Datos.
 
 ---
 
 ## 📅 Tablas de Dimensiones (Filtros y Ejes Analíticos)
 
-Estas tablas contienen los catálogos y descripciones que permiten cruzar, filtrar y segmentar las métricas mediante un esquema estrella (Star Schema).
+Estas tablas contienen los catálogos y atributos descriptivos que permiten cruzar, filtrar y segmentar las métricas de los partidos y jugadores mediante el modelo Estrella.
 
-### `dim_teams`
-*   **Propósito:** Catálogo de equipos de los que se tiene registro.
+### `dim_team`
+*   **Propósito:** Catálogo oficial de equipos con los que el pipeline ha interactuado.
 *   **Columnas Clave:**
-    *   `team_id` (INT): Identificador único del equipo.
-    *   `team_name` (STRING): Nombre oficial del equipo.
+    *   `team_id` (INT): Identificador único del equipo proveniente de la API original.
+    *   `team_name` (STRING): Nombre de la institución.
+    *   `country` (STRING): País al que pertenece el club.
 
-### `dim_players`
-*   **Propósito:** Catálogo histórico de jugadores y sus metadatos vitales.
+### `dim_player`
+*   **Propósito:** Catálogo histórico de jugadores y sus metadatos biográficos.
 *   **Columnas Clave:**
-    *   `player_id` (INT): Identificador único del jugador.
-    *   `player_name` (STRING): Nombre completo.
-    *   `position_name` (STRING): Posición natural (Ej. Defender, Forward).
-    *   `jersey_number` (INT): Número habitual.
+    *   `player_id` (INT): Identificador único permanente del jugador.
+    *   `player_name` (STRING): Nombre deportivo o completo.
+    *   `position_name` (STRING): Posición principal (Ej. Defender, Forward, Midfielder).
+    *   `jersey_number` (INT): Dorsal más comúnmente usado.
 
-### `dim_competitions`
-*   **Propósito:** Catálogo de Ligas y Copas extraídas.
+### `dim_competition`
+*   **Propósito:** Catálogo de competiciones (Ligas, Copas).
 *   **Columnas Clave:** `competition_id`, `competition_name` (Ej. Premier League, Serie A).
 
+### `dim_referee`
+*   **Propósito:** Base de datos de árbitros extraída dinámicamente de los partidos.
+*   **Columnas Clave:** `referee_id` (Generado por hash text), `referee_name`.
+
 ### `dim_date`
-*   **Propósito:** Dimensión de calendario (`Time Intelligence`) para posibilitar cruces por mes, año o día de la semana.
+*   **Propósito:** Dimensión de tiempo continua (`Time Intelligence`) para posibilitar cruces MTD, YTD, cruces semestrales o por días particulares de la semana.
 *   **Columnas Clave:** `date_id`, `Year`, `Month`, `Day`, `Weekday_Name`.
 
 ---
 
-## 📈 Tablas de Hechos (Métricas Base)
+## 📈 Tablas de Hechos "Marts" (Métricas Enriquecidas)
 
-Almacenan los eventos atómicos ocurridos dentro de los partidos (Transacciones).
+Ya no existen tablas atómicas aisladas, la capa Gold ahora condensa todo el detalle del partido, las métricas ofensivas y defensivas, los resultados de mercados de apuestas y los historiales de forma mediante Promedios Móviles.
 
-### `fact_matches`
-*   **Propósito:** Resumen general del resultado final de cada partido.
-*   **Columnas Clave:**
-    *   `match_id` (INT): ID único del partido.
-    *   `home_score` / `away_score` (INT): Goles marcados por local y visitante.
-    *   `total_goals` (INT): Suma de goles en el partido.
-    *   `referee_name` (STRING): Árbitro designado para el encuentro.
+### `fact_team_match`
+El nivel de detalle es un equipo dentro de un partido específico. Por cada partido jugado, existen dos filas (el local y el visitante).
 
-### `fact_lineups`
-*   **Propósito:** Registro de los jugadores que participaron en un partido específico, sus posiciones en el campo y minutos jugados.
-*   **Columnas Clave:**
-    *   `status_text` (STRING): Indicador de titularidad ("Starting" o "Substitute").
-    *   `minutes_played` (INT): Tiempo exacto en cancha.
+**Resumen del Partido:**
+* `match_id` (INT) / `team_id` (INT) / `opponent_id` (INT).
+* `is_home` (INT): Booleano identificando si el equipo jugó de local (1) o visitante (0).
+* `team_score` / `opponent_score`: Goles marcados por el equipo vs el oponente.
+* `match_date_id` (INT) / `match_date`: Llaves con la dimensión tiempo.
 
-### `fact_events`
-*   **Propósito:** Bitácora cronológica minuto a minuto de todo lo sucedido en el juego.
-*   **Columnas Clave:**
-    *   `event_type_name` (STRING): Tipo de acción (Gol, Tarjeta amarilla, Tarjeta roja, Sustitución).
-    *   `game_minute` (FLOAT): Minuto exacto de la incidencia.
+**Métricas y Rendimiento:**
+* `possession_for` (FLOAT), `shots_on_target_for` (INT), `corners_for` (INT).
+* `fouls_for` (INT), `yellow_cards_for` (INT), `red_cards_for` (INT).
 
-### `fact_shots`
-*   **Propósito:** Catálogo espacial (X/Y) y probabilístico de cada remate intentado en la base de datos.
-*   **Columnas Clave:**
-    *   `xg` (FLOAT): Expected Goals. Probabilidad matemática (0 a 1) de que el tiro terminara en gol.
-    *   `outcome_name` (STRING): Destino final del tiro (Atajado, Gol, Poste, Fuera).
+**Indicadores Predictivos (Betting Flags):**
+* `is_btts` (FLOAT): 1 si "Ambos Equipos Anotan", 0 caso contrario.
+* `is_over_2_5` (FLOAT): 1 si hubo 3 goles o más en el partido.
+* `scored_first` (FLOAT) / `conceded_first` (FLOAT): Quién rompió el arco en cero.
 
----
-
-## 🎯 Data Marts de Apuestas y Analítica Avanzada (Betting Hub)
-
-Estas tablas son generadas por ingeniería de características (`create_betting_facts.py` y `create_powerbi_mart.py`) cruzando los hechos y dimensiones para calcular directamente variables predictivas e indicadores de apuestas deportivas.
-
-### 1. `powerbi_mart_player_props` 
-**La joya de la corona para analizar el rendimiento de jugadores.** Desnormaliza dimensiones y calcula promedios móviles para análisis de "Player Props" y estado de forma.
-*   **Métricas Atómicas:**
-    *   `minutes_played` (INT): Minutos disputados.
-    *   `is_starter` (INT): Booleano (1=Titular, 0=Suplente).
-    *   `total_shots` / `shots_on_target` / `goals` / `total_xg`: Mapeo ofensivo principal.
-*   **Ingeniería Defensiva/Creativa:**
-    *   `passes_completed` (INT): Pases exitosos.
-    *   `key_passes` (INT): Pases que desencadenaron un tiro claro ("Pases Clave").
-    *   `xa` (FLOAT): Asistencias Esperadas.
-    *   `interceptions` / `clearances`: Tareas defensivas puras.
-    *   `fouls_committed` / `fouls_received`: Faltas tácticas e infracciones sufridas.
-*   **Métricas Predictivas (Estado de Forma):**
-    *   `{metrica}_roll3` y `{metrica}_roll5` (FLOAT): Promedio de las últimas 3 y 5 actuaciones del jugador (Ej. `shots_on_target_roll3`). Informa "apuestas en caliente".
-
-### 2. `fact_betting_team`
-Data tabular por equipo y partido con indicadores para resolver mercados tradicionales de apuestas (Goles, Córners, Tarjetas).
-*   **Banderas de Mercado (Booleanos 1=Ganador, 0=Perdedor):**
-    *   `is_btts`: Ambos Equipos Marcan (Both Teams to Score).
-    *   `is_over_1_5` / `is_over_2_5` / `is_over_3_5`: Mercados de totales de goles.
-*   **Indicadores Cronológicos y de Mitades (Half-Time):**
-    *   `goals_ht_for` / `goals_ht_conceded`: Goles al descanso.
-    *   `scored_first` / `conceded_first` (Booleano): Indicador de quién abrió el marcador.
-    *   `first_goal_minute` (INT): Minuto exacto donde se rompió el 0-0.
-*   **Ineficiencias Matemáticas ("Suerte"):**
-    *   `overperformance_for` (FLOAT): Goles reales menos Expected Goals (xG). Indica si el equipo está teniendo más suerte/efectividad estadística de la merecida matemáticamente.
-
-### 3. `mart_betting_trends`
-Analítica de Series de Tiempo que agrupa el progreso y momento actual del equipo de forma móvil (sin importar el contrincante).
-*   **Tendencias Generales:** Promedios de los últimos 3 y 5 partidos para todas las métricas (Goles, Tiros al arco, Córners). Funciona con la sintaxis `{metrica}_roll3`.
-*   **Desdoblamiento de Localía (Splits):**
-    *   `{metrica}_roll3_home`: Aisla las estadísticas considerando SOLO si el equipo jugó en calidad de "Local" en sus últimos 3 lances.
-    *   `{metrica}_roll3_away`: Aislamiento estadístico como visitante (Away).
-
-### 4. `mart_referee_stats`
-Perfilador y ranqueador generalizado de Árbitros.
-*   **Métricas:**
-    *   `avg_yellow_cards` / `avg_red_cards` (FLOAT): Media de amonestaciones mostradas por el colegiado por partido.
-    *   `matches_refereed` (INT): Robustez del árbitro en la base de datos (Volumen de partidos analizados de dicho réferi).
-    *   `total_yellow_cards` / `total_red_cards` (INT).
+**Tendencias Modulares (Rolling Averages):**
+* Resumen en vivo de cómo llega el equipo al partido evaluando sus desempeños a corto y mediano plazo (Rachas).
+* `team_goals_scored_roll5` (FLOAT): Promedio de goles marcados por el equipo en sus últimos 5 partidos ligueros de la muestra.
+* `team_goals_conceded_roll5` (FLOAT): Promedio encajado en sus últimos 5 partidos.
+* `team_shots_on_target_roll5` (FLOAT): Tiros al arco como indicador de ofensividad en forma.
+* *Nota: La lógica para `roll3` existe en el mismo formato de igual manera pero con los últimos 3 partidos.*
 
 ---
 
-*Desarrollado en Python con SQLite3/Pandas y concebido para despliegues de grado empresarial.*
+### `fact_player_match`
+Nivel de granularidad a nivel jugador por partido. Concentrado en métricas individuales. Es la tabla vital en el análisis del mercado de "Player Props" o rendimiento Fantasy.
+
+**Participación General:**
+* `match_id` / `player_id`.
+* `is_starter` (INT): 1 si arrancó de titular desde el pitazo, 0 si ingresó de cambio.
+* `minutes_played` (INT).
+
+**Aportes Individuales:**
+* `goals` (INT) / `assists` (INT).
+* `shots_on_target` (INT), `shots_off_target` (INT), `total_shots` (INT).
+* `passes_completed` (INT) / `passes_total` (INT).
+* `key_passes` (INT): Oportunidades creadas para compañeros cruzando líneas.
+
+**Aspecto Defensivo y Físico:**
+* `tackles` (INT) / `interceptions` (INT) / `clearances` (INT).
+* `fouls_committed` (INT).
+* `yellow_cards` / `red_cards`.
+
+**Historial a Nivel Jugador (Forma):**
+* Al igual que equipos, se le asocia al jugador el rendimiento que tuvo en sus duelos previos a este.
+* `player_shots_on_target_roll3` (FLOAT): Mide qué tan fino / ofensivo ha estado un atacante (Ideal para decidir apuestas Over/Under SOT).
+* `player_goals_roll3` (FLOAT): Tendencia goleadora.
+* `player_fouls_roll3` (FLOAT): Promedio agresividad / amonestaciones inminentes.
+
+---
+
+*Desarrollado en Python, SQLAlchemy y optimizado para implementaciones corporativas en SQL Server.*

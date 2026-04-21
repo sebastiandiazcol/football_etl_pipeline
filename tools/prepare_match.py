@@ -5,9 +5,7 @@ import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import process_team_matches
-from transform.create_betting_facts import create_betting_tables
-from transform.create_powerbi_mart import create_powerbi_mart
-from transform.create_team_matches_mart import create_team_matches_mart
+from transform.silver_to_gold import compute_rolling_averages, compute_dim_referee, generate_dim_date
 from transform.sqlite_to_sqlserver import migrate_to_sqlserver
 from db.database import init_db
 
@@ -29,8 +27,21 @@ def search_team(team_query: str) -> int:
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, params=params, headers=headers, timeout=20)
+                response.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"  Fallo de comunicacion con el servidor. Reintentando ({attempt + 1}/{max_retries})...")
+                    import time
+                    time.sleep(2)
+                else:
+                    raise e
+                    
         data = response.json()
         
         # Diccionarios en memoria para traducir los IDs de Pais y Liga a Texto
@@ -112,14 +123,10 @@ def main():
         print("\n--- INICIANDO EXTRACCION: EQUIPO VISITANTE ---")
         process_team_matches(away_id, matches_to_fetch)
         
-        print("\n--- ACTUALIZANDO TABLAS DE APUESTAS (POWER BI) ---")
-        create_betting_tables()
-        
-        print("\n--- CREANDO BASE DE PARTIDOS UNIFICADA (FACT_TEAM_MATCHES) ---")
-        create_team_matches_mart()
-        
-        print("\n--- CREANDO DATA MART PARA PLAYER PROPS ---")
-        create_powerbi_mart()
+        print("\n--- POST-PROCESAMIENTO GOLD (Rolling + Referee + Date) ---")
+        compute_rolling_averages()
+        compute_dim_referee()
+        generate_dim_date()
         
         print("\n--- MIGRANDO DATOS A SQL SERVER (DOCKER) ---")
         migrate_to_sqlserver()
