@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from fastapi import HTTPException, status
@@ -91,7 +91,6 @@ async def login_user(
     if not verify_password(data.password, user.hashed_password):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
-            from datetime import timedelta
             user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCK_DURATION_MINUTES)
         await _write_audit(
             db, "login_failed", user_id=user.id, ip_address=ip_address,

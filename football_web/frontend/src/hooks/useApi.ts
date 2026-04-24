@@ -12,12 +12,12 @@ let failedQueue: Array<{
   reject: (reason?: unknown) => void;
 }> = [];
 
-function processQueue(error: unknown) {
+function processQueue(error: unknown, success = false) {
   failedQueue.forEach(({ resolve, reject }) => {
-    if (error) {
-      reject(error);
-    } else {
+    if (success) {
       resolve(undefined);
+    } else {
+      reject(error);
     }
   });
   failedQueue = [];
@@ -45,10 +45,10 @@ api.interceptors.response.use(
 
       try {
         await api.post('/auth/refresh');
-        processQueue(null);
+        processQueue(null, true);
         return api(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError);
+        processQueue(refreshError, false);
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
