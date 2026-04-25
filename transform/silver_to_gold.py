@@ -505,7 +505,11 @@ def compute_rolling_averages():
                         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
                     )
 
-        df_team = df_team.fillna(0)
+        # Evitar llenar con 0 IDs que pueden ser NULL (como referee_id)
+        numeric_cols = df_team.select_dtypes(include=['number']).columns
+        cols_to_fill = [c for c in numeric_cols if not c.endswith('_id') and not c.endswith('_key')]
+        df_team[cols_to_fill] = df_team[cols_to_fill].fillna(0)
+
         df_team = df_team.round(2)
 
         # Escribir de vuelta - DELETE+APPEND para preservar estructura e indices
@@ -539,7 +543,11 @@ def compute_rolling_averages():
                         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
                     )
 
-        df_player = df_player.fillna(0)
+        # Evitar llenar con 0 IDs
+        numeric_cols = df_player.select_dtypes(include=['number']).columns
+        cols_to_fill = [c for c in numeric_cols if not c.endswith('_id') and not c.endswith('_key')]
+        df_player[cols_to_fill] = df_player[cols_to_fill].fillna(0)
+
         df_player = df_player.round(2)
 
         # DELETE+APPEND para preservar estructura e indices
@@ -553,7 +561,7 @@ def compute_dim_referee():
     """Calcula dim_referee a partir de fact_team_match."""
     logger.info("Calculando dim_referee...")
 
-    df = pd.read_sql("SELECT * FROM fact_team_match WHERE referee_id IS NOT NULL", con=engine_gold)
+    df = pd.read_sql("SELECT * FROM fact_team_match WHERE referee_id IS NOT NULL AND referee_id != 0", con=engine_gold)
     if df.empty:
         logger.info("  No hay datos con referee_id.")
         return
@@ -568,6 +576,10 @@ def compute_dim_referee():
         total_yellow_cards=('yellow_cards_for', 'sum'),
         total_red_cards=('red_cards_for', 'sum'),
     ).reset_index()
+    
+    # Eliminar cualquier fila donde el nombre sea nulo (por seguridad ante inconsistencias)
+    agg = agg.dropna(subset=['referee_name'])
+
 
     agg['avg_yellow_cards'] = (agg['total_yellow_cards'] / agg['matches_refereed']).round(2)
     agg['avg_red_cards'] = (agg['total_red_cards'] / agg['matches_refereed']).round(2)
