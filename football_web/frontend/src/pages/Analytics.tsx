@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type CSSProperties, type ChangeEvent } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,7 +15,7 @@ import { Team, PlayerStat, TeamMatch } from '../types';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Title, Tooltip, Legend);
 
-const s: Record<string, React.CSSProperties> = {
+const s: Record<string, CSSProperties> = {
   page: { minHeight: '100vh', background: '#0f172a', padding: '2rem' },
   title: { color: '#e2e8f0', fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem' },
   controls: { display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap' as const },
@@ -58,7 +58,7 @@ export default function Analytics() {
     }
   }, []);
 
-  const handleTeamChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleTeamChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setSelectedTeam(id);
     fetchTeamStats(id);

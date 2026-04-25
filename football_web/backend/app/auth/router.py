@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
@@ -18,10 +20,11 @@ from .schemas import (
 from . import service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 _COOKIE_OPTS = dict(
     httponly=True,
-    samesite="lax",
+    samesite="strict",
     secure=settings.ENVIRONMENT == "production",
 )
 
@@ -54,6 +57,7 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit(settings.RATE_LIMIT_LOGIN)
 async def login(
     data: LoginRequest,
     request: Request,

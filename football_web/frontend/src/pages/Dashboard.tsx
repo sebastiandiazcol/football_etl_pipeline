@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,7 +18,7 @@ import PipelineRunner from '../components/PipelineRunner';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
 
-const s: Record<string, React.CSSProperties> = {
+const s: Record<string, CSSProperties> = {
   page: { minHeight: '100vh', background: '#0f172a', padding: '2rem' },
   header: { marginBottom: '2rem' },
   greeting: { color: '#e2e8f0', fontSize: '1.5rem', fontWeight: 700 },

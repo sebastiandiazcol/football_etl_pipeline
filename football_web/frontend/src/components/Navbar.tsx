@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { type CSSProperties } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   nav: {
     background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
     borderBottom: '1px solid #334155',

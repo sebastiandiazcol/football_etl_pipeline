@@ -63,7 +63,7 @@ class TestLogin:
         assert resp.status_code == 401
 
     async def test_login_rate_limiting(self, client: AsyncClient):
-        """The 6th login attempt within a minute should return 423 (account locked)."""
+        """After max failed attempts, account should be locked (423) or IP rate-limited (429)."""
         email = "ratelimit@example.com"
         await register_user(
             client, {"email": email, "password": "StrongP@ss1", "full_name": "Rate User"}
@@ -77,7 +77,7 @@ class TestLogin:
             "/auth/login",
             json={"email": email, "password": "WrongP@ss1"},
         )
-        assert resp.status_code in (423, 401)
+        assert resp.status_code in (423, 429, 401)
 
 
 class TestTokenRefresh:

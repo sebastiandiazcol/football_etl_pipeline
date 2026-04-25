@@ -30,8 +30,9 @@ async def _execute_etl(run_id: str, team_id: int, max_matches: int) -> None:
     try:
         proc = await asyncio.create_subprocess_exec(
             "python", "main.py",
-            "--team-id", str(team_id),
-            "--max-matches", str(max_matches),
+            "--mode", "process_team",
+            "--team", str(team_id),
+            "--matches", str(max_matches),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

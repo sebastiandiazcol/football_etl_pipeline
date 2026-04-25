@@ -1,8 +1,8 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
-const s: Record<string, React.CSSProperties> = {
+const s: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -27,18 +27,6 @@ const s: Record<string, React.CSSProperties> = {
   title: { color: '#38bdf8', fontSize: '1.5rem', fontWeight: 700, margin: 0 },
   subtitle: { color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem' },
   tabRow: { display: 'flex', marginBottom: '1.5rem', background: '#0f172a', borderRadius: '8px', padding: '4px' },
-  tab: (active: boolean): React.CSSProperties => ({
-    flex: 1,
-    padding: '8px',
-    borderRadius: '6px',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '0.875rem',
-    fontWeight: 600,
-    background: active ? '#0ea5e9' : 'transparent',
-    color: active ? '#fff' : '#64748b',
-    transition: 'all 0.2s',
-  }),
   field: { marginBottom: '1rem' },
   label: { display: 'block', color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.4rem' },
   input: {
@@ -74,6 +62,19 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: '1rem',
   },
 };
+
+const tabStyle = (active: boolean): CSSProperties => ({
+  flex: 1,
+  padding: '8px',
+  borderRadius: '6px',
+  border: 'none',
+  cursor: 'pointer',
+  fontSize: '0.875rem',
+  fontWeight: 600,
+  background: active ? '#0ea5e9' : 'transparent',
+  color: active ? '#fff' : '#64748b',
+  transition: 'all 0.2s',
+});
 
 export default function Login() {
   const { login } = useAuth();
@@ -138,10 +139,10 @@ export default function Login() {
         </div>
 
         <div style={s.tabRow}>
-          <button style={s.tab(tab === 'login')} onClick={() => { setTab('login'); setError(''); }}>
+          <button style={tabStyle(tab === 'login')} onClick={() => { setTab('login'); setError(''); }}>
             Sign In
           </button>
-          <button style={s.tab(tab === 'register')} onClick={() => { setTab('register'); setError(''); }}>
+          <button style={tabStyle(tab === 'register')} onClick={() => { setTab('register'); setError(''); }}>
             Register
           </button>
         </div>

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties, type FormEvent } from 'react';
 import api from '../hooks/useApi';
 import { PipelineRun } from '../types';
 
-const s: Record<string, React.CSSProperties> = {
+const s: Record<string, CSSProperties> = {
   container: { background: '#1e293b', borderRadius: '12px', padding: '1.5rem', marginTop: '2rem' },
   title: { color: '#38bdf8', fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' },
   form: { display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' as const },
@@ -59,7 +59,7 @@ export default function PipelineRunner() {
     return () => clearInterval(interval);
   }, [fetchRuns]);
 
-  const handleRun = async (e: React.FormEvent) => {
+  const handleRun = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!teamId) {

@@ -1,3 +1,10 @@
+import os
+
+# Set required env vars before importing app modules
+os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-characters-long!")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("ENVIRONMENT", "test")
+
 import asyncio
 import pytest
 import pytest_asyncio
@@ -28,6 +35,17 @@ async def setup_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await test_engine.dispose()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_rate_limiter():
+    """Reset rate limiter storage between tests to ensure test isolation."""
+    yield
+    try:
+        from app.auth.router import limiter as auth_limiter
+        auth_limiter._storage.reset()
+    except Exception:
+        pass
 
 
 @pytest_asyncio.fixture()
