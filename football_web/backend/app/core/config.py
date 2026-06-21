@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    GOLD_DB_PATH: str = "data/03_gold.db"
 
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]

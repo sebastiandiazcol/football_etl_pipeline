@@ -101,9 +101,13 @@ export default function Login() {
         return;
       }
       navigate('/dashboard');
-    } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Login failed';
+    } catch (err: any) {
+      let detail = err?.response?.data?.detail ?? 'Login failed';
+      if (Array.isArray(detail)) {
+        detail = detail.map((d: any) => d.msg).join(', ');
+      } else if (typeof detail !== 'string') {
+        detail = JSON.stringify(detail);
+      }
       setError(detail);
     } finally {
       setLoading(false);
@@ -120,9 +124,13 @@ export default function Login() {
       // Auto-login after register
       const result = await login(email, password);
       if (!result.mfaRequired) navigate('/dashboard');
-    } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Registration failed';
+    } catch (err: any) {
+      let detail = err?.response?.data?.detail ?? 'Registration failed';
+      if (Array.isArray(detail)) {
+        detail = detail.map((d: any) => d.msg).join(', ');
+      } else if (typeof detail !== 'string') {
+        detail = JSON.stringify(detail);
+      }
       setError(detail);
     } finally {
       setLoading(false);

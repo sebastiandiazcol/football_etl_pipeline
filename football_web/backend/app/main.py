@@ -78,3 +78,13 @@ async def validation_error_handler(request: Request, exc):
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": "Validation error", "errors": exc.errors() if hasattr(exc, "errors") else str(exc)},
     )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print("GLOBAL EXCEPTION CAUGHT:")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )

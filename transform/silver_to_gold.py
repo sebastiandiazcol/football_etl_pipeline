@@ -505,7 +505,19 @@ def compute_rolling_averages():
                         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
                     )
 
-        df_team = df_team.fillna(0)
+        # Rellenar con 0 solo las columnas de promedios móviles
+        roll_cols_to_fill = []
+        for src_col, (roll3_col, roll5_col) in roll_cols_team.items():
+            if roll3_col:
+                roll_cols_to_fill.append(roll3_col)
+            if roll5_col:
+                roll_cols_to_fill.append(roll5_col)
+        df_team[roll_cols_to_fill] = df_team[roll_cols_to_fill].fillna(0)
+        
+        # Limpiar referee_id si quedó con 0 en alguna ejecución previa
+        if 'referee_id' in df_team.columns:
+            df_team['referee_id'] = df_team['referee_id'].replace(0, None)
+            
         df_team = df_team.round(2)
 
         # Escribir de vuelta - DELETE+APPEND para preservar estructura e indices
@@ -539,7 +551,14 @@ def compute_rolling_averages():
                         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
                     )
 
-        df_player = df_player.fillna(0)
+        # Rellenar con 0 solo las columnas de promedios móviles
+        roll_cols_to_fill_player = []
+        for src_col, (roll3_col, roll5_col) in roll_cols_player.items():
+            if roll3_col:
+                roll_cols_to_fill_player.append(roll3_col)
+            if roll5_col:
+                roll_cols_to_fill_player.append(roll5_col)
+        df_player[roll_cols_to_fill_player] = df_player[roll_cols_to_fill_player].fillna(0)
         df_player = df_player.round(2)
 
         # DELETE+APPEND para preservar estructura e indices
@@ -553,7 +572,8 @@ def compute_dim_referee():
     """Calcula dim_referee a partir de fact_team_match."""
     logger.info("Calculando dim_referee...")
 
-    df = pd.read_sql("SELECT * FROM fact_team_match WHERE referee_id IS NOT NULL", con=engine_gold)
+    # Evitamos traer referee_id = 0 que corresponden a NULLs rellenados erróneamente en el pasado
+    df = pd.read_sql("SELECT * FROM fact_team_match WHERE referee_id IS NOT NULL AND referee_id != 0", con=engine_gold)
     if df.empty:
         logger.info("  No hay datos con referee_id.")
         return

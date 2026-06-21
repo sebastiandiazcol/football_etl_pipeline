@@ -10,18 +10,20 @@ from fastapi.responses import StreamingResponse
 from ..core.dependencies import get_current_user
 from ..models.user import User
 
+from ..core.config import settings
+
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
-GOLD_DB_PATH = Path(__file__).resolve().parents[4] / "data" / "03_gold.db"
+GOLD_DB_PATH = Path(settings.GOLD_DB_PATH)
 
 
-async def _get_gold_conn():
+def _get_gold_conn():
     if not GOLD_DB_PATH.exists():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Analytics database not available",
         )
-    return await aiosqlite.connect(str(GOLD_DB_PATH))
+    return aiosqlite.connect(str(GOLD_DB_PATH))
 
 
 @router.get("/team/{team_id}")
@@ -30,8 +32,7 @@ async def team_stats(
     current_user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     try:
-        conn = await _get_gold_conn()
-        async with conn:
+        async with _get_gold_conn() as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
                 """
@@ -63,8 +64,7 @@ async def top_players(
     current_user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     try:
-        conn = await _get_gold_conn()
-        async with conn:
+        async with _get_gold_conn() as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute(
                 """
@@ -103,8 +103,7 @@ async def export_teams_csv(
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
-        conn = await _get_gold_conn()
-        async with conn:
+        async with _get_gold_conn() as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("SELECT * FROM fact_team_match ORDER BY date_key")
             rows = await cursor.fetchall()
@@ -127,8 +126,7 @@ async def export_players_csv(
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     try:
-        conn = await _get_gold_conn()
-        async with conn:
+        async with _get_gold_conn() as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("SELECT * FROM fact_player_match ORDER BY player_id")
             rows = await cursor.fetchall()

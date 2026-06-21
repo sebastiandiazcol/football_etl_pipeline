@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U football_user"]
+      test: ["CMD-SHELL", "pg_isready -U football_user -d football_web"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,12 +23,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://football_user:${POSTGRES_PASSWORD}@postgres:5432/football_web
       SECRET_KEY: ${SECRET_KEY}
-      ALLOWED_ORIGINS: '["https://${DOMAIN}"]'
-      ENVIRONMENT: production
+      ALLOWED_ORIGINS: '["http://${DOMAIN}"]'
+      ENVIRONMENT: development
+      DEBUG: 'True'
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - ../data:/app/data:ro
     expose:
       - "8000"
 
