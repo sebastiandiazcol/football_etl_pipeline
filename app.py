@@ -2,17 +2,19 @@
 """
 Football Analytics & Pure Probability Engine
 Web App interactiva para:
-1. Búsqueda y descarga fácil de estadísticas de fútbol (API 365scores).
-2. Procesamiento Medallion automatizado (Bronze -> Silver -> Gold).
-3. Motor de Probabilidades Estadísticas Puras (Distribución de Poisson, 1X2, Over/Under, BTTS).
-4. Análisis descriptivo de rendimiento y Player Props (tiros a puerta, faltas, tarjetas).
-5. Exportación instantánea en Excel y CSV sin requerir bases de datos externas.
+1. Cartelera y selección de Partidos de Hoy (con descarga y análisis automático).
+2. Búsqueda manual de cualquier equipo del mundo (API 365scores).
+3. Procesamiento Medallion automatizado (Bronze -> Silver -> Gold).
+4. Motor de Probabilidades Estadísticas Puras (Distribución de Poisson, 1X2, Over/Under, BTTS).
+5. Análisis descriptivo de rendimiento y Player Props (tiros a puerta, faltas, tarjetas).
+6. Exportación instantánea en Excel y CSV sin requerir bases de datos externas ni Docker.
 """
 
 import os
 import io
 import time
 import requests
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -32,15 +34,15 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.2rem;
+        font-size: 2.1rem;
         font-weight: 700;
         color: #1E3A8A;
         margin-bottom: 0.2rem;
     }
     .sub-header {
-        font-size: 1.05rem;
+        font-size: 1.0rem;
         color: #4B5563;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
     .metric-card {
         background: #F8FAFC;
@@ -51,7 +53,7 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .metric-title {
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         color: #64748B;
         font-weight: 600;
         text-transform: uppercase;
@@ -67,9 +69,24 @@ st.markdown("""
         font-weight: 600;
         margin-top: 4px;
     }
-    .badge-win { background-color: #DCFCE7; color: #166534; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
-    .badge-draw { background-color: #FEF9C3; color: #854D0E; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
-    .badge-loss { background-color: #FEE2E2; color: #991B1B; padding: 3px 8px; border-radius: 6px; font-weight: 600; }
+    .match-banner {
+        background: linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%);
+        color: white;
+        padding: 18px 24px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    .match-banner h2 {
+        color: white;
+        margin: 0;
+        font-size: 1.7rem;
+    }
+    .match-banner p {
+        color: #E2E8F0;
+        margin: 4px 0 0 0;
+        font-size: 0.95rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,12 +110,92 @@ init_db()
 # ==============================================================================
 # FUNCIONES DE ASISTENCIA Y API
 # ==============================================================================
+@st.cache_data(ttl=180)
+def get_today_football_matches(date_str: str = None):
+    """
+    Obtiene todos los partidos de fútbol para la fecha indicada (DD/MM/YYYY)
+    directamente desde la API de 365scores.
+    """
+    if not date_str:
+        date_str = datetime.now().strftime("%d/%m/%Y")
+
+    url = "https://webws.365scores.com/web/games/"
+    params = {
+        'appTypeId': 5,
+        'langId': 14,
+        'timezoneName': 'America/Bogota',
+        'startDate': date_str,
+        'endDate': date_str
+    }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+
+        competitions = {c["id"]: c.get("name") for c in data.get("competitions", [])}
+        countries = {c["id"]: c.get("name") for c in data.get("countries", [])}
+
+        games = []
+        for g in data.get("games", []):
+            if g.get("sportId") != 1:  # 1 = Fútbol (Soccer)
+                continue
+
+            comp_id = g.get("competitionId")
+            comp_name = competitions.get(comp_id, "Torneo Internacional")
+
+            home = g.get("homeCompetitor", {})
+            away = g.get("awayCompetitor", {})
+            home_id = home.get("id")
+            away_id = away.get("id")
+
+            if not home_id or not away_id:
+                continue
+
+            start_raw = g.get("startTime", "")
+            time_display = "--:--"
+            if "T" in start_raw:
+                time_display = start_raw.split("T")[1][:5]
+
+            status_text = g.get("statusText", "Prog.")
+            status_group = g.get("statusGroup", 1)
+
+            # Clasificación de estado
+            if status_text == "Prog.":
+                status_category = "Programado"
+            elif status_text == "Finalizado":
+                status_category = "Finalizado"
+            else:
+                status_category = "En Vivo"
+
+            display_label = f"[{time_display}] {home.get('name')} vs {away.get('name')} | {comp_name} ({status_text})"
+
+            games.append({
+                "game_id": g.get("id"),
+                "competition": comp_name,
+                "time": time_display,
+                "status_text": status_text,
+                "status_category": status_category,
+                "home_id": home_id,
+                "home_name": home.get("name"),
+                "away_id": away_id,
+                "away_name": away.get("name"),
+                "display": display_label
+            })
+
+        return games
+    except Exception as e:
+        st.error(f"Error consultando partidos de hoy: {e}")
+        return []
+
+
 @st.cache_data(ttl=3600)
 def search_teams_api(query: str):
     """Busca equipos en la API de 365scores."""
     if not query or len(query.strip()) < 2:
         return []
-    
+
     url = "https://webws.365scores.com/web/search/"
     params = {
         'appTypeId': 5,
@@ -113,7 +210,7 @@ def search_teams_api(query: str):
         data = r.json()
         countries = {c.get('id'): c.get('name') for c in data.get('countries', [])}
         competitions = {c.get('id'): c.get('name') for c in data.get('competitions', [])}
-        
+
         comps = [c for c in data.get('competitors', []) if c.get('sportId') == 1]
         results = []
         for c in comps:
@@ -170,48 +267,128 @@ def load_players_gold_data(team_ids: list):
 
 
 # ==============================================================================
-# BARRA LATERAL (CONTROLES Y BÚSQUEDA)
+# BARRA LATERAL (SELECCIÓN Y CONTROLES)
 # ==============================================================================
-st.sidebar.markdown("## ⚽ Selección de Partido")
-st.sidebar.markdown("Busca los dos equipos para descargar sus estadísticas y proyectar las probabilidades.")
+st.sidebar.markdown("## ⚽ Menú de Análisis")
 
-# 1. Buscador Equipo Local
-home_query = st.sidebar.text_input("🏠 Equipo Local:", value="Real Madrid")
-home_results = search_teams_api(home_query)
+# Selector de Modo: Partidos de Hoy vs Búsqueda Manual
+mode = st.sidebar.radio(
+    "Selecciona cómo elegir tu partido:",
+    ["📅 Partidos de Hoy", "🔍 Búsqueda Manual de Equipos"],
+    index=0
+)
 
 home_selected = None
-if home_results:
-    home_options = {item['display']: item for item in home_results}
-    selected_label = st.sidebar.selectbox("Selecciona Equipo Local confirmado:", list(home_options.keys()), key="home_select")
-    home_selected = home_options[selected_label]
-else:
-    # Soporte para ingreso de ID numérico directo
-    if home_query.isdigit():
-        home_selected = {'id': int(home_query), 'name': f"Equipo {home_query}", 'display': f"ID {home_query}"}
-    else:
-        st.sidebar.caption("Escribe el nombre del equipo y presiona Enter.")
-
-# 2. Buscador Equipo Visitante
-away_query = st.sidebar.text_input("✈️ Equipo Visitante:", value="Barcelona")
-away_results = search_teams_api(away_query)
-
 away_selected = None
-if away_results:
-    away_options = {item['display']: item for item in away_results}
-    selected_label = st.sidebar.selectbox("Selecciona Equipo Visitante confirmado:", list(away_options.keys()), key="away_select")
-    away_selected = away_options[selected_label]
-else:
-    if away_query.isdigit():
-        away_selected = {'id': int(away_query), 'name': f"Equipo {away_query}", 'display': f"ID {away_query}"}
+match_context_info = None
+
+# ------------------------------------------------------------------------------
+# MODO 1: PARTIDOS DE HOY
+# ------------------------------------------------------------------------------
+if mode == "📅 Partidos de Hoy":
+    st.sidebar.markdown("### 📅 Partidos de Hoy")
+
+    selected_date = st.sidebar.date_input("Fecha:", datetime.now().date())
+    date_formatted = selected_date.strftime("%d/%m/%Y")
+
+    today_games = get_today_football_matches(date_formatted)
+
+    if not today_games:
+        st.sidebar.warning(f"No se encontraron partidos para la fecha {date_formatted}.")
     else:
-        st.sidebar.caption("Escribe el nombre del equipo y presiona Enter.")
+        # Filtros rápidos para facilitar la búsqueda
+        filter_status = st.sidebar.selectbox(
+            "Filtrar por estado:",
+            ["Todos", "Programados / Por Jugar", "En Vivo", "Finalizados"]
+        )
 
-# Configuración de Partidos
+        filtered_by_status = today_games
+        if filter_status == "Programados / Por Jugar":
+            filtered_by_status = [g for g in today_games if g["status_category"] == "Programado"]
+        elif filter_status == "En Vivo":
+            filtered_by_status = [g for g in today_games if g["status_category"] == "En Vivo"]
+        elif filter_status == "Finalizados":
+            filtered_by_status = [g for g in today_games if g["status_category"] == "Finalizado"]
+
+        # Filtro de liga
+        all_leagues = sorted(list(set(g["competition"] for g in filtered_by_status)))
+        league_choice = st.sidebar.selectbox("Filtrar por Liga / Torneo:", ["Todas las ligas"] + all_leagues)
+
+        filtered_by_league = filtered_by_status
+        if league_choice != "Todas las ligas":
+            filtered_by_league = [g for g in filtered_by_status if g["competition"] == league_choice]
+
+        # Filtro de texto opcional
+        search_match_txt = st.sidebar.text_input("Buscar equipo (opcional):", "").strip().lower()
+        if search_match_txt:
+            filtered_by_league = [
+                g for g in filtered_by_league
+                if search_match_txt in g["home_name"].lower() or search_match_txt in g["away_name"].lower()
+            ]
+
+        st.sidebar.caption(f"Partidos disponibles: **{len(filtered_by_league)}**")
+
+        if filtered_by_league:
+            options_dict = {g["display"]: g for g in filtered_by_league}
+            selected_display = st.sidebar.selectbox(
+                "👉 Elige el partido a analizar:",
+                list(options_dict.keys()),
+                key="today_match_select"
+            )
+            chosen_game = options_dict[selected_display]
+
+            home_selected = {
+                'id': chosen_game['home_id'],
+                'name': chosen_game['home_name'],
+                'display': chosen_game['home_name']
+            }
+            away_selected = {
+                'id': chosen_game['away_id'],
+                'name': chosen_game['away_name'],
+                'display': chosen_game['away_name']
+            }
+            match_context_info = {
+                'competition': chosen_game['competition'],
+                'time': chosen_game['time'],
+                'status': chosen_game['status_text']
+            }
+        else:
+            st.sidebar.info("No hay partidos con los filtros aplicados. Intenta cambiar el filtro de liga o estado.")
+
+# ------------------------------------------------------------------------------
+# MODO 2: BÚSQUEDA MANUAL DE EQUIPOS
+# ------------------------------------------------------------------------------
+else:
+    st.sidebar.markdown("### 🔍 Búsqueda Manual de Equipos")
+    home_query = st.sidebar.text_input("🏠 Equipo Local:", value="Real Madrid")
+    home_results = search_teams_api(home_query)
+
+    if home_results:
+        home_options = {item['display']: item for item in home_results}
+        selected_label = st.sidebar.selectbox("Selecciona Equipo Local confirmado:", list(home_options.keys()), key="manual_home")
+        home_selected = home_options[selected_label]
+    elif home_query.isdigit():
+        home_selected = {'id': int(home_query), 'name': f"Equipo {home_query}", 'display': f"ID {home_query}"}
+
+    away_query = st.sidebar.text_input("✈️ Equipo Visitante:", value="Barcelona")
+    away_results = search_teams_api(away_query)
+
+    if away_results:
+        away_options = {item['display']: item for item in away_results}
+        selected_label = st.sidebar.selectbox("Selecciona Equipo Visitante confirmado:", list(away_options.keys()), key="manual_away")
+        away_selected = away_options[selected_label]
+    elif away_query.isdigit():
+        away_selected = {'id': int(away_query), 'name': f"Equipo {away_query}", 'display': f"ID {away_query}"}
+
+
+# ------------------------------------------------------------------------------
+# PARÁMETROS COMUNES Y BOTÓN DE DESCARGA
+# ------------------------------------------------------------------------------
 st.sidebar.markdown("---")
-n_matches = st.sidebar.slider("📊 Historial a descargar (partidos por equipo):", min_value=3, max_value=25, value=10, step=1)
-force_redownload = st.sidebar.checkbox("Forzar nueva descarga (actualizar API)", value=False)
+n_matches = st.sidebar.slider("📊 Partidos históricos a descargar por equipo:", min_value=3, max_value=25, value=10, step=1)
+auto_download = st.sidebar.checkbox("Descargar automáticamente si faltan datos", value=True)
+force_redownload = st.sidebar.checkbox("Forzar actualización desde la API", value=False)
 
-# Botón de Descarga
 start_pipeline_btn = st.sidebar.button("🚀 Descargar y Analizar Partidos", use_container_width=True, type="primary")
 
 st.sidebar.markdown("---")
@@ -223,7 +400,7 @@ st.sidebar.info("""
 
 
 # ==============================================================================
-# LÓGICA DE EXTRACCIÓN Y PIPELINE
+# PROCESAMIENTO Y DASHBOARD
 # ==============================================================================
 if home_selected and away_selected:
     home_id = home_selected['id']
@@ -231,13 +408,26 @@ if home_selected and away_selected:
     home_name = home_selected['name']
     away_name = away_selected['name']
 
+    # Banner del Partido
+    banner_comp = match_context_info['competition'] if match_context_info else "Análisis Estadístico"
+    banner_time = f" | ⏰ Hora: {match_context_info['time']}" if match_context_info and match_context_info['time'] != "--:--" else ""
+    banner_status = f" | 📌 Estado: {match_context_info['status']}" if match_context_info else ""
+
+    st.markdown(f"""
+    <div class='match-banner'>
+        <h2>⚽ {home_name} vs {away_name}</h2>
+        <p>🏆 <b>{banner_comp}</b>{banner_time}{banner_status}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     # Verificar si ya existen partidos en Gold
     df_home_exist = load_gold_data(home_id)
     df_away_exist = load_gold_data(away_id)
 
-    need_download = force_redownload or df_home_exist.empty or df_away_exist.empty
+    need_download = force_redownload or (auto_download and (df_home_exist.empty or df_away_exist.empty))
 
-    if start_pipeline_btn or (need_download and not force_redownload and df_home_exist.empty):
+    # Ejecución del pipeline de extracción si es requerida o si se pulsó el botón
+    if start_pipeline_btn or need_download:
         progress_bar = st.progress(0, text="Iniciando descarga de estadísticas...")
         status_text = st.empty()
 
@@ -270,15 +460,11 @@ if home_selected and away_selected:
     df_away = load_gold_data(away_id)
     df_players = load_players_gold_data([home_id, away_id])
 
-    # ==============================================================================
-    # HEADER PRINCIPAL
-    # ==============================================================================
-    st.markdown(f"<div class='main-header'>⚽ {home_name} vs {away_name}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='sub-header'>Análisis Estadístico Puro y Proyección de Probabilidades | Muestra: {len(df_home)} partidos ({home_name}) y {len(df_away)} partidos ({away_name})</div>", unsafe_allow_html=True)
-
     if df_home.empty or df_away.empty:
-        st.warning("No hay suficientes partidos descargados aún. Haz clic en **'Descargar y Analizar Partidos'** en la barra lateral.")
+        st.warning("Aún no se han descargado partidos para ambos equipos. Haz clic en **'Descargar y Analizar Partidos'** en la barra lateral.")
         st.stop()
+
+    st.markdown(f"<div class='sub-header'>Muestra analizada: {len(df_home)} partidos de <b>{home_name}</b> y {len(df_away)} partidos de <b>{away_name}</b></div>", unsafe_allow_html=True)
 
     # Cálculo del modelo estadístico
     lambda_home, lambda_away = estimate_lambdas_from_history(df_home, df_away, home_id, away_id)
@@ -287,11 +473,12 @@ if home_selected and away_selected:
     stats_away = compute_empirical_team_stats(df_away, away_id)
 
     # TABS PRINCIPALES
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "🎲 Probabilidades Matemáticas (Poisson)",
-        "📊 Estadísticas Descriptivas & Frecuencias",
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🎲 Probabilidades Poisson (1X2 & Mercados)",
+        "📊 Estadísticas Descriptivas & Comparativa",
         "🏃 Rendimiento Jugadores (Player Props)",
-        "💾 Descarga Fácil de Datos (Excel / CSV)"
+        "💾 Descarga Fácil (Excel / CSV)",
+        "📋 Cartelera Completa de Hoy"
     ])
 
     # --------------------------------------------------------------------------
@@ -406,8 +593,7 @@ if home_selected and away_selected:
     # --------------------------------------------------------------------------
     with tab2:
         st.markdown("### Métricas Comparativas de Rendimiento Real (Datos Observados)")
-        
-        # Comparativa gráfica de métricas clave
+
         metrics_compare = pd.DataFrame({
             "Métrica": ["Goles Anotados", "Goles Concedidos", "Tiros al Arco", "Córners", "Faltas Cometidas"],
             f"{home_name} (Media)": [
@@ -442,7 +628,6 @@ if home_selected and away_selected:
         fig_bar.update_layout(barmode='group', height=360, margin=dict(l=20, r=20, t=30, b=20))
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # Tablas de frecuencia observada
         st.markdown("#### Frecuencias Observadas en la Muestra Reciente")
         c_f1, c_f2 = st.columns(2)
         with c_f1:
@@ -493,7 +678,6 @@ if home_selected and away_selected:
 
             players_summary = compute_player_props_summary(df_players, filter_tid)
             if not players_summary.empty:
-                # Renombrar columnas para lectura amigable
                 players_summary = players_summary.rename(columns={
                     'player_name': 'Jugador',
                     'matches': 'Partidos',
@@ -519,9 +703,8 @@ if home_selected and away_selected:
 
         col_d1, col_d2, col_d3 = st.columns(3)
 
-        # 1. Exportar Partidos Gold (Excel y CSV)
         combined_matches = pd.concat([df_home, df_away], ignore_index=True).drop_duplicates(subset=['match_id', 'team_id'])
-        
+
         with col_d1:
             st.markdown("#### 1. Historial de Partidos (Gold)")
             csv_matches = combined_matches.to_csv(index=False).encode('utf-8')
@@ -533,7 +716,6 @@ if home_selected and away_selected:
                 use_container_width=True
             )
 
-            # Botón Excel
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                 combined_matches.to_excel(writer, index=False, sheet_name='Partidos')
@@ -545,7 +727,6 @@ if home_selected and away_selected:
                 use_container_width=True
             )
 
-        # 2. Exportar Jugadores
         with col_d2:
             st.markdown("#### 2. Estadísticas de Jugadores")
             if not df_players.empty:
@@ -560,7 +741,6 @@ if home_selected and away_selected:
             else:
                 st.caption("No hay datos de jugadores para exportar.")
 
-        # 3. Exportar Reporte de Probabilidades
         with col_d3:
             st.markdown("#### 3. Reporte de Probabilidades")
             report_rows = [
@@ -583,12 +763,28 @@ if home_selected and away_selected:
                 use_container_width=True
             )
 
-        st.markdown("---")
-        st.markdown("""
-        #### 💡 ¿Cómo usar estos datos descargados?
-        1. **Excel / Google Sheets:** Abre cualquiera de los archivos CSV o Excel directamente para crear tablas dinámicas, correlaciones o filtros propios.
-        2. **Power BI Desktop:** Puedes cargar directamente el archivo Excel o conectarte a la base de datos SQLite `data/03_gold.db` usando el conector ODBC sin necesidad de Docker ni SQL Server.
-        """)
+    # --------------------------------------------------------------------------
+    # TAB 5: CARTELERA COMPLETA DE HOY
+    # --------------------------------------------------------------------------
+    with tab5:
+        st.markdown("### 📋 Cartelera Completa de Partidos de Hoy")
+        st.markdown("Explora todos los encuentros del día ordenados por hora.")
+
+        today_all = get_today_football_matches(datetime.now().strftime("%d/%m/%Y"))
+        if today_all:
+            df_cartelera = pd.DataFrame(today_all)[[
+                'time', 'competition', 'home_name', 'away_name', 'status_text', 'status_category'
+            ]].rename(columns={
+                'time': 'Hora',
+                'competition': 'Torneo / Liga',
+                'home_name': 'Equipo Local',
+                'away_name': 'Equipo Visitante',
+                'status_text': 'Detalle Estado',
+                'status_category': 'Estado'
+            })
+            st.dataframe(df_cartelera, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay información de partidos para mostrar.")
 
 else:
-    st.info("👈 Por favor selecciona los dos equipos en la barra lateral para comenzar.")
+    st.info("👈 Por favor selecciona un partido en la barra lateral izquierda para comenzar.")
