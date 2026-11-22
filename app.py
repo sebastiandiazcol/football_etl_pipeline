@@ -1,20 +1,20 @@
 # app.py
 """
 Football Analytics & Pure Probability Engine
-Web App interactiva para:
-1. Cartelera y selección de Partidos de Hoy (con descarga y análisis automático).
-2. Búsqueda manual de cualquier equipo del mundo (API 365scores).
-3. Procesamiento Medallion automatizado (Bronze -> Silver -> Gold).
-4. Motor de Probabilidades Estadísticas Puras (Distribución de Poisson, 1X2, Over/Under, BTTS).
+Web App interactiva:
+1. Cartelera visual estilo 365Scores de los Partidos de Hoy (selección interactiva por filas).
+2. Paso de Validación y confirmación: Selección de cantidad de partidos históricos a analizar.
+3. Descarga y procesamiento Medallion automatizado (Bronze -> Silver -> Gold).
+4. Motor de Probabilidades Estadísticas Puras (Distribución de Poisson Bivariada, 1X2, Over/Under, BTTS).
 5. Análisis descriptivo de rendimiento y Player Props (tiros a puerta, faltas, tarjetas).
-6. Exportación instantánea en Excel y CSV sin requerir bases de datos externas ni Docker.
+6. Exportación instantánea en Excel (.xlsx) y CSV.
 """
 
 import os
 import io
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, date
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -30,19 +30,70 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados
+# Estilos CSS personalizados inspirados en 365Scores
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.1rem;
-        font-weight: 700;
+    .main-title {
+        font-size: 2.2rem;
+        font-weight: 800;
         color: #1E3A8A;
         margin-bottom: 0.2rem;
     }
-    .sub-header {
-        font-size: 1.0rem;
+    .main-subtitle {
+        font-size: 1.05rem;
         color: #4B5563;
-        margin-bottom: 1.2rem;
+        margin-bottom: 1.5rem;
+    }
+    .match-validation-card {
+        background: #FFFFFF;
+        border: 2px solid #2563EB;
+        border-radius: 12px;
+        padding: 22px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+    }
+    .match-header-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #F1F5F9;
+        padding: 12px 18px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+    }
+    .team-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #0F172A;
+    }
+    .comp-badge {
+        background: #DBEAFE;
+        color: #1E40AF;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.88rem;
+    }
+    .status-live {
+        background: #FEE2E2;
+        color: #991B1B;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+    }
+    .status-finished {
+        background: #DCFCE7;
+        color: #166534;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    .status-scheduled {
+        background: #E0E7FF;
+        color: #3730A3;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
     }
     .metric-card {
         background: #F8FAFC;
@@ -59,33 +110,15 @@ st.markdown("""
         text-transform: uppercase;
     }
     .metric-value {
-        font-size: 1.8rem;
-        font-weight: 700;
+        font-size: 1.85rem;
+        font-weight: 800;
         color: #0F172A;
     }
     .metric-odd {
         font-size: 0.95rem;
         color: #2563EB;
-        font-weight: 600;
+        font-weight: 700;
         margin-top: 4px;
-    }
-    .match-banner {
-        background: linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%);
-        color: white;
-        padding: 18px 24px;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-    }
-    .match-banner h2 {
-        color: white;
-        margin: 0;
-        font-size: 1.7rem;
-    }
-    .match-banner p {
-        color: #E2E8F0;
-        margin: 4px 0 0 0;
-        font-size: 0.95rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -106,19 +139,24 @@ from analysis.probabilities import (
 # Inicializar Base de Datos SQLite
 init_db()
 
+# Inicializar Session State para navegación
+if "selected_match" not in st.session_state:
+    st.session_state.selected_match = None
+if "analysis_confirmed" not in st.session_state:
+    st.session_state.analysis_confirmed = False
+if "confirmed_matches_history" not in st.session_state:
+    st.session_state.confirmed_matches_history = 10
+
 
 # ==============================================================================
-# FUNCIONES DE ASISTENCIA Y API
+# FUNCIONES DE CONSULTA Y API
 # ==============================================================================
 @st.cache_data(ttl=180)
-def get_today_football_matches(date_str: str = None):
+def fetch_day_fixtures(date_str: str):
     """
-    Obtiene todos los partidos de fútbol para la fecha indicada (DD/MM/YYYY)
-    directamente desde la API de 365scores.
+    Descarga la cartelera completa de partidos de fútbol para una fecha (DD/MM/YYYY)
+    desde la API de 365scores.
     """
-    if not date_str:
-        date_str = datetime.now().strftime("%d/%m/%Y")
-
     url = "https://webws.365scores.com/web/games/"
     params = {
         'appTypeId': 5,
@@ -139,7 +177,7 @@ def get_today_football_matches(date_str: str = None):
 
         games = []
         for g in data.get("games", []):
-            if g.get("sportId") != 1:  # 1 = Fútbol (Soccer)
+            if g.get("sportId") != 1:  # Solo Fútbol
                 continue
 
             comp_id = g.get("competitionId")
@@ -149,44 +187,54 @@ def get_today_football_matches(date_str: str = None):
             away = g.get("awayCompetitor", {})
             home_id = home.get("id")
             away_id = away.get("id")
+            home_name = home.get("name", "Local")
+            away_name = away.get("name", "Visitante")
 
             if not home_id or not away_id:
                 continue
 
             start_raw = g.get("startTime", "")
-            time_display = "--:--"
+            time_str = "--:--"
             if "T" in start_raw:
-                time_display = start_raw.split("T")[1][:5]
+                time_str = start_raw.split("T")[1][:5]
 
             status_text = g.get("statusText", "Prog.")
-            status_group = g.get("statusGroup", 1)
+            home_score = home.get("score")
+            away_score = away.get("score")
 
-            # Clasificación de estado
-            if status_text == "Prog.":
-                status_category = "Programado"
-            elif status_text == "Finalizado":
-                status_category = "Finalizado"
+            # Formato de marcador o VS
+            if home_score is not None and away_score is not None and status_text != "Prog.":
+                score_display = f"{int(home_score)} - {int(away_score)}"
             else:
-                status_category = "En Vivo"
+                score_display = "vs"
 
-            display_label = f"[{time_display}] {home.get('name')} vs {away.get('name')} | {comp_name} ({status_text})"
+            # Categorización de estado
+            if status_text == "Prog.":
+                cat = "Programado"
+            elif status_text == "Finalizado":
+                cat = "Finalizado"
+            else:
+                cat = "En Vivo"
 
             games.append({
                 "game_id": g.get("id"),
-                "competition": comp_name,
-                "time": time_display,
-                "status_text": status_text,
-                "status_category": status_category,
+                "Hora": time_str,
+                "Torneo": comp_name,
+                "Equipo Local": home_name,
+                "Marcador": score_display,
+                "Equipo Visitante": away_name,
+                "Estado": status_text,
+                "Categoría": cat,
                 "home_id": home_id,
-                "home_name": home.get("name"),
                 "away_id": away_id,
-                "away_name": away.get("name"),
-                "display": display_label
+                "home_name": home_name,
+                "away_name": away_name,
+                "competition": comp_name,
             })
 
         return games
     except Exception as e:
-        st.error(f"Error consultando partidos de hoy: {e}")
+        st.error(f"Error consultando partidos: {e}")
         return []
 
 
@@ -195,14 +243,8 @@ def search_teams_api(query: str):
     """Busca equipos en la API de 365scores."""
     if not query or len(query.strip()) < 2:
         return []
-
     url = "https://webws.365scores.com/web/search/"
-    params = {
-        'appTypeId': 5,
-        'langId': 14,
-        'timezoneName': 'America/Bogota',
-        'q': query.strip()
-    }
+    params = {'appTypeId': 5, 'langId': 14, 'timezoneName': 'America/Bogota', 'q': query.strip()}
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         r = requests.get(url, params=params, headers=headers, timeout=10)
@@ -210,7 +252,6 @@ def search_teams_api(query: str):
         data = r.json()
         countries = {c.get('id'): c.get('name') for c in data.get('countries', [])}
         competitions = {c.get('id'): c.get('name') for c in data.get('competitions', [])}
-
         comps = [c for c in data.get('competitors', []) if c.get('sportId') == 1]
         results = []
         for c in comps:
@@ -225,7 +266,6 @@ def search_teams_api(query: str):
             })
         return results
     except Exception as e:
-        st.error(f"Error consultando API de búsqueda: {e}")
         return []
 
 
@@ -242,12 +282,12 @@ def load_gold_data(team_id: int):
         """
         df = pd.read_sql(query, engine_gold)
         return df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 
 def load_players_gold_data(team_ids: list):
-    """Carga las estadísticas de jugadores de los equipos indicados."""
+    """Carga estadísticas de jugadores."""
     if not team_ids:
         return pd.DataFrame()
     try:
@@ -262,223 +302,264 @@ def load_players_gold_data(team_ids: list):
         """
         df = pd.read_sql(query, engine_gold)
         return df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 
 # ==============================================================================
-# BARRA LATERAL (SELECCIÓN Y CONTROLES)
+# HEADER DE LA APLICACIÓN
 # ==============================================================================
-st.sidebar.markdown("## ⚽ Menú de Análisis")
+st.markdown("<div class='main-title'>⚽ Football Analytics & Pure Probability Engine</div>", unsafe_allow_html=True)
+st.markdown("<div class='main-subtitle'>Cartelera interactiva estilo 365Scores, validación de partidos y modelado estadístico puro de Poisson.</div>", unsafe_allow_html=True)
 
-# Selector de Modo: Partidos de Hoy vs Búsqueda Manual
-mode = st.sidebar.radio(
-    "Selecciona cómo elegir tu partido:",
-    ["📅 Partidos de Hoy", "🔍 Búsqueda Manual de Equipos"],
+
+# ==============================================================================
+# BARRA LATERAL (MODO Y FECHA)
+# ==============================================================================
+st.sidebar.markdown("## 🧭 Menú")
+app_mode = st.sidebar.radio(
+    "Selecciona el modo:",
+    ["📅 Cartelera de Partidos (Estilo 365)", "🔍 Búsqueda Manual de Equipos"],
     index=0
 )
 
-home_selected = None
-away_selected = None
-match_context_info = None
-
 # ------------------------------------------------------------------------------
-# MODO 1: PARTIDOS DE HOY
+# SI ESTÁ EN MODO MANUAL
 # ------------------------------------------------------------------------------
-if mode == "📅 Partidos de Hoy":
-    st.sidebar.markdown("### 📅 Partidos de Hoy")
+if app_mode == "🔍 Búsqueda Manual de Equipos":
+    st.sidebar.markdown("### 🔍 Búsqueda Manual")
+    h_query = st.sidebar.text_input("Equipo Local:", value="Real Madrid")
+    h_res = search_teams_api(h_query)
+    h_pick = None
+    if h_res:
+        h_dict = {x['display']: x for x in h_res}
+        h_sel = st.sidebar.selectbox("Confirmar Local:", list(h_dict.keys()), key="man_h")
+        h_pick = h_dict[h_sel]
 
-    selected_date = st.sidebar.date_input("Fecha:", datetime.now().date())
-    date_formatted = selected_date.strftime("%d/%m/%Y")
+    a_query = st.sidebar.text_input("Equipo Visitante:", value="Barcelona")
+    a_res = search_teams_api(a_query)
+    a_pick = None
+    if a_res:
+        a_dict = {x['display']: x for x in a_res}
+        a_sel = st.sidebar.selectbox("Confirmar Visitante:", list(a_dict.keys()), key="man_a")
+        a_pick = a_dict[a_sel]
 
-    today_games = get_today_football_matches(date_formatted)
+    if st.sidebar.button("Cargar Partido Manual", type="primary", use_container_width=True):
+        if h_pick and a_pick:
+            st.session_state.selected_match = {
+                "home_id": h_pick['id'],
+                "home_name": h_pick['name'],
+                "away_id": a_pick['id'],
+                "away_name": a_pick['name'],
+                "competition": "Amistoso / Búsqueda Manual",
+                "Hora": "--:--",
+                "Estado": "Manual"
+            }
+            st.session_state.analysis_confirmed = False
+            st.rerun()
 
-    if not today_games:
-        st.sidebar.warning(f"No se encontraron partidos para la fecha {date_formatted}.")
-    else:
-        # Filtros rápidos para facilitar la búsqueda
-        filter_status = st.sidebar.selectbox(
-            "Filtrar por estado:",
-            ["Todos", "Programados / Por Jugar", "En Vivo", "Finalizados"]
+
+# ==============================================================================
+# PASO 1: CARTELERA ESTILO 365SCORES (SI NO HAY ANÁLISIS CONFIRMADO)
+# ==============================================================================
+if app_mode == "📅 Cartelera de Partidos (Estilo 365)":
+    # Barra de Filtros estilo 365
+    c_f1, c_f2, c_f3, c_f4 = st.columns([1.2, 1.5, 1.5, 2])
+    with c_f1:
+        match_date = st.date_input("📅 Fecha:", date.today(), label_visibility="collapsed")
+    date_str = match_date.strftime("%d/%m/%Y")
+
+    fixtures = fetch_day_fixtures(date_str)
+
+    with c_f2:
+        status_filter = st.selectbox(
+            "Estado:",
+            ["Todos los partidos", "Programados / Por Jugar", "En Vivo", "Finalizados"],
+            label_visibility="collapsed"
+        )
+    with c_f3:
+        all_comps = sorted(list(set(g["Torneo"] for g in fixtures))) if fixtures else []
+        comp_filter = st.selectbox(
+            "Liga / Torneo:",
+            ["Todas las ligas"] + all_comps,
+            label_visibility="collapsed"
+        )
+    with c_f4:
+        search_txt = st.text_input("🔍 Buscar equipo o torneo...", "").strip().lower()
+
+    # Filtrar partidos
+    filtered_games = fixtures
+    if status_filter == "Programados / Por Jugar":
+        filtered_games = [g for g in filtered_games if g["Categoría"] == "Programado"]
+    elif status_filter == "En Vivo":
+        filtered_games = [g for g in filtered_games if g["Categoría"] == "En Vivo"]
+    elif status_filter == "Finalizados":
+        filtered_games = [g for g in filtered_games if g["Categoría"] == "Finalizado"]
+
+    if comp_filter != "Todas las ligas":
+        filtered_games = [g for g in filtered_games if g["Torneo"] == comp_filter]
+
+    if search_txt:
+        filtered_games = [
+            g for g in filtered_games
+            if search_txt in g["Equipo Local"].lower() or search_txt in g["Equipo Visitante"].lower() or search_txt in g["Torneo"].lower()
+        ]
+
+    st.markdown(f"**Partidos encontrados:** `{len(filtered_games)}` partidos en agenda")
+
+    # Mostrar la tabla interactiva 365Scores
+    if filtered_games:
+        df_display = pd.DataFrame(filtered_games)[[
+            "Hora", "Torneo", "Equipo Local", "Marcador", "Equipo Visitante", "Estado"
+        ]]
+
+        st.caption("👆 **Haz clic sobre cualquier fila** de la tabla para seleccionar el partido a analizar:")
+        
+        # Selección interactiva de fila con st.dataframe
+        selection = st.dataframe(
+            df_display,
+            on_select="rerun",
+            selection_mode="single-row",
+            use_container_width=True,
+            hide_index=True,
+            height=380
         )
 
-        filtered_by_status = today_games
-        if filter_status == "Programados / Por Jugar":
-            filtered_by_status = [g for g in today_games if g["status_category"] == "Programado"]
-        elif filter_status == "En Vivo":
-            filtered_by_status = [g for g in today_games if g["status_category"] == "En Vivo"]
-        elif filter_status == "Finalizados":
-            filtered_by_status = [g for g in today_games if g["status_category"] == "Finalizado"]
+        # Si el usuario hace clic en una fila, guardamos en session_state
+        if selection and selection.get("selection") and selection["selection"].get("rows"):
+            selected_row_idx = selection["selection"]["rows"][0]
+            if 0 <= selected_row_idx < len(filtered_games):
+                chosen = filtered_games[selected_row_idx]
+                st.session_state.selected_match = chosen
+                st.session_state.analysis_confirmed = False
+                st.rerun()
 
-        # Filtro de liga
-        all_leagues = sorted(list(set(g["competition"] for g in filtered_by_status)))
-        league_choice = st.sidebar.selectbox("Filtrar por Liga / Torneo:", ["Todas las ligas"] + all_leagues)
-
-        filtered_by_league = filtered_by_status
-        if league_choice != "Todas las ligas":
-            filtered_by_league = [g for g in filtered_by_status if g["competition"] == league_choice]
-
-        # Filtro de texto opcional
-        search_match_txt = st.sidebar.text_input("Buscar equipo (opcional):", "").strip().lower()
-        if search_match_txt:
-            filtered_by_league = [
-                g for g in filtered_by_league
-                if search_match_txt in g["home_name"].lower() or search_match_txt in g["away_name"].lower()
-            ]
-
-        st.sidebar.caption(f"Partidos disponibles: **{len(filtered_by_league)}**")
-
-        if filtered_by_league:
-            options_dict = {g["display"]: g for g in filtered_by_league}
-            selected_display = st.sidebar.selectbox(
-                "👉 Elige el partido a analizar:",
-                list(options_dict.keys()),
-                key="today_match_select"
-            )
-            chosen_game = options_dict[selected_display]
-
-            home_selected = {
-                'id': chosen_game['home_id'],
-                'name': chosen_game['home_name'],
-                'display': chosen_game['home_name']
-            }
-            away_selected = {
-                'id': chosen_game['away_id'],
-                'name': chosen_game['away_name'],
-                'display': chosen_game['away_name']
-            }
-            match_context_info = {
-                'competition': chosen_game['competition'],
-                'time': chosen_game['time'],
-                'status': chosen_game['status_text']
-            }
-        else:
-            st.sidebar.info("No hay partidos con los filtros aplicados. Intenta cambiar el filtro de liga o estado.")
-
-# ------------------------------------------------------------------------------
-# MODO 2: BÚSQUEDA MANUAL DE EQUIPOS
-# ------------------------------------------------------------------------------
-else:
-    st.sidebar.markdown("### 🔍 Búsqueda Manual de Equipos")
-    home_query = st.sidebar.text_input("🏠 Equipo Local:", value="Real Madrid")
-    home_results = search_teams_api(home_query)
-
-    if home_results:
-        home_options = {item['display']: item for item in home_results}
-        selected_label = st.sidebar.selectbox("Selecciona Equipo Local confirmado:", list(home_options.keys()), key="manual_home")
-        home_selected = home_options[selected_label]
-    elif home_query.isdigit():
-        home_selected = {'id': int(home_query), 'name': f"Equipo {home_query}", 'display': f"ID {home_query}"}
-
-    away_query = st.sidebar.text_input("✈️ Equipo Visitante:", value="Barcelona")
-    away_results = search_teams_api(away_query)
-
-    if away_results:
-        away_options = {item['display']: item for item in away_results}
-        selected_label = st.sidebar.selectbox("Selecciona Equipo Visitante confirmado:", list(away_options.keys()), key="manual_away")
-        away_selected = away_options[selected_label]
-    elif away_query.isdigit():
-        away_selected = {'id': int(away_query), 'name': f"Equipo {away_query}", 'display': f"ID {away_query}"}
-
-
-# ------------------------------------------------------------------------------
-# PARÁMETROS COMUNES Y BOTÓN DE DESCARGA
-# ------------------------------------------------------------------------------
-st.sidebar.markdown("---")
-n_matches = st.sidebar.slider("📊 Partidos históricos a descargar por equipo:", min_value=3, max_value=25, value=10, step=1)
-auto_download = st.sidebar.checkbox("Descargar automáticamente si faltan datos", value=True)
-force_redownload = st.sidebar.checkbox("Forzar actualización desde la API", value=False)
-
-start_pipeline_btn = st.sidebar.button("🚀 Descargar y Analizar Partidos", use_container_width=True, type="primary")
-
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**Metodología Matemática:**
-- **Modelo Poisson:** Calcula la probabilidad de cada marcador $(x, y)$ a partir del promedio ponderado de ataque y defensa.
-- **Cuota Justa:** $1 / P$. Representa la probabilidad matemática pura sin comisión de casas de apuestas.
-""")
+    else:
+        st.info("No se encontraron partidos con los filtros seleccionados.")
 
 
 # ==============================================================================
-# PROCESAMIENTO Y DASHBOARD
+# PASO 2: TARJETA DE VALIDACIÓN DEL PARTIDO SELECCIONADO
 # ==============================================================================
-if home_selected and away_selected:
-    home_id = home_selected['id']
-    away_id = away_selected['id']
-    home_name = home_selected['name']
-    away_name = away_selected['name']
+if st.session_state.selected_match:
+    match = st.session_state.selected_match
 
-    # Banner del Partido
-    banner_comp = match_context_info['competition'] if match_context_info else "Análisis Estadístico"
-    banner_time = f" | ⏰ Hora: {match_context_info['time']}" if match_context_info and match_context_info['time'] != "--:--" else ""
-    banner_status = f" | 📌 Estado: {match_context_info['status']}" if match_context_info else ""
+    st.markdown("---")
+    st.markdown("### 📋 Validación del Partido a Analizar")
 
     st.markdown(f"""
-    <div class='match-banner'>
-        <h2>⚽ {home_name} vs {away_name}</h2>
-        <p>🏆 <b>{banner_comp}</b>{banner_time}{banner_status}</p>
+    <div class='match-validation-card'>
+        <div class='match-header-box'>
+            <span class='comp-badge'>🏆 {match.get('competition', match.get('Torneo', 'Torneo'))}</span>
+            <span class='status-scheduled'>⏰ {match.get('time', match.get('Hora', '--:--'))} | 📌 {match.get('status', match.get('Estado', ''))}</span>
+        </div>
+        <div style='text-align: center; margin: 15px 0;'>
+            <span class='team-title'>🏠 {match['home_name']}</span>
+            <span style='font-size: 1.5rem; font-weight: 800; color: #2563EB; margin: 0 20px;'>VS</span>
+            <span class='team-title'>✈️ {match['away_name']}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Verificar si ya existen partidos en Gold
+    # Controles de validación antes de descargar
+    col_v1, col_v2, col_v3 = st.columns([2, 1.5, 1.5])
+
+    with col_v1:
+        n_history = st.slider(
+            "📊 ¿Cuántos últimos partidos históricos analizar por equipo?",
+            min_value=3, max_value=25, value=st.session_state.confirmed_matches_history, step=1
+        )
+    with col_v2:
+        force_dl = st.checkbox("🔄 Forzar actualización completa (API)", value=False)
+    with col_v3:
+        st.write("")
+        st.write("")
+        btn_confirm = st.button("🚀 Confirmar e Iniciar Análisis", type="primary", use_container_width=True)
+
+    col_cancel, _ = st.columns([1.5, 4])
+    with col_cancel:
+        if st.button("✖️ Cancelar y elegir otro partido", use_container_width=True):
+            st.session_state.selected_match = None
+            st.session_state.analysis_confirmed = False
+            st.rerun()
+
+    if btn_confirm:
+        st.session_state.confirmed_matches_history = n_history
+        st.session_state.force_redownload = force_dl
+        st.session_state.analysis_confirmed = True
+        st.rerun()
+
+
+# ==============================================================================
+# PASO 3: DESCARGA AUTOMATIZADA Y DASHBOARD ANALÍTICO
+# ==============================================================================
+if st.session_state.selected_match and st.session_state.analysis_confirmed:
+    match = st.session_state.selected_match
+    home_id = match['home_id']
+    away_id = match['away_id']
+    home_name = match['home_name']
+    away_name = match['away_name']
+    n_history = st.session_state.confirmed_matches_history
+    force_dl = st.session_state.get("force_redownload", False)
+
+    # Verificar existencia en Gold
     df_home_exist = load_gold_data(home_id)
     df_away_exist = load_gold_data(away_id)
 
-    need_download = force_redownload or (auto_download and (df_home_exist.empty or df_away_exist.empty))
+    need_dl = force_dl or df_home_exist.empty or df_away_exist.empty
 
-    # Ejecución del pipeline de extracción si es requerida o si se pulsó el botón
-    if start_pipeline_btn or need_download:
-        progress_bar = st.progress(0, text="Iniciando descarga de estadísticas...")
-        status_text = st.empty()
+    if need_dl:
+        prog_bar = st.progress(0, text="Iniciando descarga de estadísticas...")
+        status_txt = st.empty()
 
         # 1. Descarga Local
-        status_text.text(f"Descargando últimos {n_matches} partidos de {home_name}...")
-        def home_cb(curr, tot, desc):
-            progress_bar.progress(int((curr / (tot * 2)) * 100), text=f"[{home_name}] {desc}")
-        process_team_matches(home_id, max_matches=n_matches, progress_callback=home_cb)
+        status_txt.text(f"Descargando últimos {n_history} partidos de {home_name}...")
+        def h_cb(curr, tot, desc):
+            prog_bar.progress(int((curr / (tot * 2)) * 100), text=f"[{home_name}] {desc}")
+        process_team_matches(home_id, max_matches=n_history, progress_callback=h_cb)
 
         # 2. Descarga Visitante
-        status_text.text(f"Descargando últimos {n_matches} partidos de {away_name}...")
-        def away_cb(curr, tot, desc):
-            progress_bar.progress(int(50 + (curr / (tot * 2)) * 100), text=f"[{away_name}] {desc}")
-        process_team_matches(away_id, max_matches=n_matches, progress_callback=away_cb)
+        status_txt.text(f"Descargando últimos {n_history} partidos de {away_name}...")
+        def a_cb(curr, tot, desc):
+            prog_bar.progress(int(50 + (curr / (tot * 2)) * 100), text=f"[{away_name}] {desc}")
+        process_team_matches(away_id, max_matches=n_history, progress_callback=a_cb)
 
         # 3. Postprocesamiento Gold
-        status_text.text("Calculando promedios móviles y variables Gold...")
+        status_txt.text("Calculando promedios móviles y variables predictivas Gold...")
         compute_rolling_averages()
         compute_dim_referee()
         generate_dim_date()
 
-        progress_bar.progress(100, text="¡Procesamiento finalizado exitosamente!")
+        prog_bar.progress(100, text="¡Datos descargados y procesados con éxito!")
         time.sleep(1)
-        progress_bar.empty()
-        status_text.empty()
-        st.success(f"Estadísticas actualizadas para **{home_name}** y **{away_name}**.")
+        prog_bar.empty()
+        status_txt.empty()
 
-    # Cargar datos procesados
+    # Cargar datos
     df_home = load_gold_data(home_id)
     df_away = load_gold_data(away_id)
     df_players = load_players_gold_data([home_id, away_id])
 
     if df_home.empty or df_away.empty:
-        st.warning("Aún no se han descargado partidos para ambos equipos. Haz clic en **'Descargar y Analizar Partidos'** en la barra lateral.")
+        st.warning("No se encontraron suficientes partidos históricos en la API para uno de los equipos.")
         st.stop()
 
-    st.markdown(f"<div class='sub-header'>Muestra analizada: {len(df_home)} partidos de <b>{home_name}</b> y {len(df_away)} partidos de <b>{away_name}</b></div>", unsafe_allow_html=True)
-
-    # Cálculo del modelo estadístico
+    # Cálculos estadísticos
     lambda_home, lambda_away = estimate_lambdas_from_history(df_home, df_away, home_id, away_id)
     model = compute_poisson_match_probabilities(lambda_home, lambda_away)
     stats_home = compute_empirical_team_stats(df_home, home_id)
     stats_away = compute_empirical_team_stats(df_away, away_id)
 
-    # TABS PRINCIPALES
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    st.markdown("---")
+    st.markdown(f"## 📊 Informe Analítico: {home_name} vs {away_name}")
+    st.markdown(f"<span style='color: #4B5563;'>Muestra analizada: <b>{len(df_home)}</b> partidos de {home_name} y <b>{len(df_away)}</b> partidos de {away_name}</span>", unsafe_allow_html=True)
+
+    # TABS ANALÍTICOS
+    tab1, tab2, tab3, tab4 = st.tabs([
         "🎲 Probabilidades Poisson (1X2 & Mercados)",
         "📊 Estadísticas Descriptivas & Comparativa",
         "🏃 Rendimiento Jugadores (Player Props)",
-        "💾 Descarga Fácil (Excel / CSV)",
-        "📋 Cartelera Completa de Hoy"
+        "💾 Descarga Fácil (Excel / CSV)"
     ])
 
     # --------------------------------------------------------------------------
@@ -515,7 +596,6 @@ if home_selected and away_selected:
         st.caption(f"**Parámetros estimados del modelo:** Goles esperados Local $\\lambda_{{home}} = {model['lambda_home']}$ | Goles esperados Visitante $\\lambda_{{away}} = {model['lambda_away']}$")
         st.markdown("---")
 
-        # Matriz de Marcadores Exactos y Marcadores más probables
         st.markdown("### 2. Matriz Bivariada de Marcadores Exactos")
         c_mat, c_top = st.columns([1.5, 1])
 
@@ -557,7 +637,6 @@ if home_selected and away_selected:
 
         st.markdown("---")
 
-        # Mercados de Goles y Ambos Marcan
         st.markdown("### 3. Mercados de Goles (Over / Under) y Ambos Equipos Marcan (BTTS)")
         c_ou, c_btts = st.columns(2)
 
@@ -583,10 +662,6 @@ if home_selected and away_selected:
                 {"Opción": "No (Al menos uno en 0)", "Probabilidad": f"{model['btts']['no']['prob']}%", "Cuota Justa": model['btts']['no']['fair_odd']},
             ]
             st.dataframe(pd.DataFrame(btts_rows), use_container_width=True, hide_index=True)
-
-            st.caption("""
-            *Nota Estadística:* Las cuotas justas se calculan como $1 / P$. Si encuentras una cuota en el mercado superior a la cuota justa calculada, el evento tiene **Valor Esperado Positivo (+EV)**.
-            """)
 
     # --------------------------------------------------------------------------
     # TAB 2: ESTADÍSTICAS DESCRIPTIVAS Y FRECUENCIAS
@@ -699,8 +774,6 @@ if home_selected and away_selected:
     # --------------------------------------------------------------------------
     with tab4:
         st.markdown("### 💾 Exportación Rápida de Datos")
-        st.markdown("Descarga los datos limpios y el modelo de probabilidades sin complicaciones.")
-
         col_d1, col_d2, col_d3 = st.columns(3)
 
         combined_matches = pd.concat([df_home, df_away], ignore_index=True).drop_duplicates(subset=['match_id', 'team_id'])
@@ -762,29 +835,3 @@ if home_selected and away_selected:
                 mime="text/csv",
                 use_container_width=True
             )
-
-    # --------------------------------------------------------------------------
-    # TAB 5: CARTELERA COMPLETA DE HOY
-    # --------------------------------------------------------------------------
-    with tab5:
-        st.markdown("### 📋 Cartelera Completa de Partidos de Hoy")
-        st.markdown("Explora todos los encuentros del día ordenados por hora.")
-
-        today_all = get_today_football_matches(datetime.now().strftime("%d/%m/%Y"))
-        if today_all:
-            df_cartelera = pd.DataFrame(today_all)[[
-                'time', 'competition', 'home_name', 'away_name', 'status_text', 'status_category'
-            ]].rename(columns={
-                'time': 'Hora',
-                'competition': 'Torneo / Liga',
-                'home_name': 'Equipo Local',
-                'away_name': 'Equipo Visitante',
-                'status_text': 'Detalle Estado',
-                'status_category': 'Estado'
-            })
-            st.dataframe(df_cartelera, use_container_width=True, hide_index=True)
-        else:
-            st.info("No hay información de partidos para mostrar.")
-
-else:
-    st.info("👈 Por favor selecciona un partido en la barra lateral izquierda para comenzar.")
