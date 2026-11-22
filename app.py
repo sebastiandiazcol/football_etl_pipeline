@@ -141,6 +141,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Importaciones del motor local
+import importlib
+import analysis.probabilities
+importlib.reload(analysis.probabilities)
+
 from db.database import init_db, SessionGold, engine_gold
 from main import process_team_matches
 from transform.silver_to_gold import compute_rolling_averages, compute_dim_referee, generate_dim_date
