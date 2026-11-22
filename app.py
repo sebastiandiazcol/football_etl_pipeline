@@ -1251,10 +1251,14 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             csv_matches = combined_matches.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar Partidos (CSV)", data=csv_matches, file_name=f"partidos_{home_name}_vs_{away_name}.csv", mime="text/csv", use_container_width=True)
 
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                combined_matches.to_excel(writer, index=False, sheet_name='Partidos')
-            st.download_button("📊 Descargar Partidos (Excel)", data=excel_buffer.getvalue(), file_name=f"partidos_{home_name}_vs_{away_name}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            try:
+                import openpyxl
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    combined_matches.to_excel(writer, index=False, sheet_name='Partidos')
+                st.download_button("📊 Descargar Partidos (Excel)", data=excel_buffer.getvalue(), file_name=f"partidos_{home_name}_vs_{away_name}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            except Exception:
+                st.caption("ℹ️ Exportación principal disponible en formato CSV arriba.")
 
         with c_exp2:
             if high_prob_picks:
