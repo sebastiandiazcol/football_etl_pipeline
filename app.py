@@ -164,6 +164,60 @@ from analysis.probabilities import (
 # Inicializar Base de Datos SQLite
 init_db()
 
+# ==============================================================================
+# SEGURIDAD Y CONTROL DE ACCESO (AUTENTICACIÓN)
+# ==============================================================================
+import hmac
+
+def check_authentication() -> bool:
+    """Verifica credenciales del usuario. Detiene la ejecución si no está autenticado."""
+    if st.session_state.get("authenticated", False):
+        return True
+
+    # Credenciales configuradas desde st.secrets, variables de entorno o fallback
+    valid_user = st.secrets.get("AUTH_USER", os.getenv("AUTH_USER", "admin"))
+    valid_pass = st.secrets.get("AUTH_PASSWORD", os.getenv("AUTH_PASSWORD", "futbol2026"))
+
+    col_l1, col_l2, col_l3 = st.columns([1, 1.25, 1])
+    with col_l2:
+        st.markdown("""
+        <div style='background:#FFFFFF; border:1px solid #E2E8F0; border-radius:14px; padding:30px 28px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.06); margin-top:40px; margin-bottom:20px;'>
+            <div style='text-align:center;'>
+                <div style='font-size:3rem; margin-bottom:6px;'>🔒</div>
+                <h2 style='margin:0; font-weight:800; color:#0F172A; letter-spacing:-0.02em;'>Acceso Restringido</h2>
+                <p style='color:#64748B; font-size:0.88rem; margin-top:6px; margin-bottom:22px;'>
+                    Ingresa tus credenciales para acceder al Dashboard de Análisis y Cuotas Deportivas.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            user_in = st.text_input("Usuario:", placeholder="Ej: admin")
+            pass_in = st.text_input("Contraseña:", type="password", placeholder="••••••••")
+            login_btn = st.form_submit_button("Iniciar Sesión 🚀", use_container_width=True)
+
+            if login_btn:
+                u_ok = hmac.compare_digest(user_in.strip(), str(valid_user).strip())
+                p_ok = hmac.compare_digest(pass_in.strip(), str(valid_pass).strip())
+                if u_ok and p_ok:
+                    st.session_state["authenticated"] = True
+                    st.session_state["current_user"] = user_in.strip()
+                    st.rerun()
+                else:
+                    st.error("❌ Credenciales incorrectas. Verifica tu usuario y contraseña.")
+
+        st.markdown("""
+            <div style='text-align:center; font-size:0.75rem; color:#94A3B8; margin-top:16px;'>
+                🔒 Sistema protegido contra accesos no autorizados
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    return False
+
+if not check_authentication():
+    st.stop()
+
 # Inicializar Estados de Sesión
 if "selected_match" not in st.session_state:
     st.session_state.selected_match = None
@@ -290,15 +344,24 @@ def load_players_gold_data(team_ids: list):
 # ==============================================================================
 # HEADER
 # ==============================================================================
-col_head1, col_head2 = st.columns([3, 1])
+col_head1, col_head2 = st.columns([2.7, 1.3])
 with col_head1:
     st.markdown("<div class='dash-title'>⚽ Football Analytics & Betting Engine (Elite)</div>", unsafe_allow_html=True)
     st.markdown("<div class='dash-meta'>Modelo Dixon-Coles · Simulación Monte Carlo (10k) · Scanner +EV · Océanos Azul y Rojo · Props</div>", unsafe_allow_html=True)
 with col_head2:
-    if st.session_state.selected_match and st.session_state.analysis_confirmed:
-        if st.button("🔄 Volver a la Cartelera", use_container_width=True):
-            st.session_state.selected_match = None
-            st.session_state.analysis_confirmed = False
+    st.markdown(f"<div style='text-align:right; margin-bottom:6px;'><span style='font-size:0.8rem; color:#64748B; background:#F1F5F9; padding:4px 10px; border-radius:6px;'>👤 Sesión activa: <b>{st.session_state.get('current_user', 'admin')}</b></span></div>", unsafe_allow_html=True)
+    b_col1, b_col2 = st.columns(2)
+    with b_col1:
+        if st.session_state.selected_match and st.session_state.analysis_confirmed:
+            if st.button("🔄 Volver", use_container_width=True):
+                st.session_state.selected_match = None
+                st.session_state.analysis_confirmed = False
+                st.rerun()
+    with b_col2:
+        if st.button("🚪 Salir", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.session_state["selected_match"] = None
+            st.session_state["analysis_confirmed"] = False
             st.rerun()
 
 

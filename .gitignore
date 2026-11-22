@@ -5,3 +5,6 @@ data/*.db
 data/*.sqlite
 .vscode/
 .idea/
+.streamlit/secrets.toml
+.env
+
