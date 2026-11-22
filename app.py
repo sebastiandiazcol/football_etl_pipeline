@@ -481,6 +481,19 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     </div>
     """, unsafe_allow_html=True)
 
+    with st.expander("💡 ¿Dudas con algún término? Haz clic aquí para ver el Glosario Rápido (Local DNB, 1X2, BTTS, SOT, +EV, Kelly...)"):
+        st.markdown("""
+        - **Local DNB (Draw No Bet / Empate Anula Apuesta)**: Apuestas por el Local. Si gana el local, ganas la apuesta. Si el partido termina en **Empate**, se anula y la casa te **devuelve el 100% de tu dinero**. Solo pierdes si gana el Visitante.
+        - **1X2**: 1 = Victoria Local, X = Empate, 2 = Victoria Visitante.
+        - **Doble Oportunidad**: 1X (Gana Local o Empatan), 12 (Gana cualquiera menos empate), X2 (Empatan o Gana Visitante).
+        - **BTTS (Both Teams To Score)**: Ambos equipos marcan al menos un gol.
+        - **Over / Under**: Más de / Menos de un determinado número de goles, faltas o córners (ej. Over 2.5 = 3 o más goles; Under 2.5 = 2 o menos goles).
+        - **FT / 1T / 2T**: FT = Todo el partido (90 min), 1T = Primer tiempo, 2T = Segundo tiempo.
+        - **SOT (Shots On Target)**: Tiros directos a puerta / tiros al arco.
+        - **Cuota Justa (1/P)**: Cuota matemática pura calculada por la probabilidad del modelo sin comisión de la casa.
+        - **+EV (Valor Esperado Positivo)**: Situación donde la casa de apuestas paga más de lo que la probabilidad matemática exige.
+        """)
+
     # --------------------------------------------------------------------------
     # TABS ANALÍTICOS DE ÉLITE
     # --------------------------------------------------------------------------
@@ -494,7 +507,8 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         tab_corners,
         tab_props,
         tab_xg_stats,
-        tab_export
+        tab_export,
+        tab_glossary
     ) = st.tabs([
         "🎯 Radar de Oportunidades & Scanner +EV",
         "🎲 Monte Carlo (10k Sims & Percentiles)",
@@ -505,7 +519,8 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         "🚩 Córners (FT & 1T)",
         "🏃 Player Props (Cuotas Jugador)",
         "📊 Marcados vs Concedidos & xG",
-        "💾 Exportación Excel / CSV"
+        "💾 Exportación Excel / CSV",
+        "📖 Glosario de Apuestas y Analítica"
     ])
 
     # --------------------------------------------------------------------------
@@ -545,9 +560,15 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             st.markdown("#### 🧮 Calculadora de Valor (+EV) y Bankroll")
             st.caption("Introduce la cuota de tu casa de apuestas para calcular si existe ventaja matemática:")
 
-            user_odd = st.number_input("Cuota de la Casa de Apuestas:", min_value=1.01, max_value=50.0, value=1.55, step=0.05)
-            user_prob_pct = st.number_input("Probabilidad del Modelo (%):", min_value=1.0, max_value=99.0, value=float(top_pick_1['Probabilidad (%)']), step=0.5)
-            user_bank = st.number_input("Tamaño total de tu Bankroll ($):", min_value=10, max_value=1000000, value=1000, step=50)
+            init_prob = float(top_pick_1.get('Probabilidad (%)', 70.0))
+            init_prob = min(max(init_prob, 0.1), 100.0)
+
+            init_odd = float(top_pick_1.get('Cuota Justa', 1.55))
+            init_odd = min(max(init_odd, 1.01), 100.0)
+
+            user_odd = st.number_input("Cuota de la Casa de Apuestas:", min_value=1.01, max_value=100.0, value=init_odd, step=0.05)
+            user_prob_pct = st.number_input("Probabilidad del Modelo (%):", min_value=0.1, max_value=100.0, value=init_prob, step=0.5)
+            user_bank = st.number_input("Tamaño total de tu Bankroll ($):", min_value=1.0, max_value=10000000.0, value=1000.0, step=50.0)
 
             p_dec = user_prob_pct / 100.0
             ev_pct = round(((p_dec * user_odd) - 1.0) * 100, 2)
@@ -922,3 +943,75 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             if high_prob_picks:
                 df_high_exp = pd.DataFrame(high_prob_picks)
                 st.download_button("🔥 Descargar Reporte Alta Probabilidad (CSV)", data=df_high_exp.to_csv(index=False).encode('utf-8'), file_name=f"alta_probabilidad_{home_name}_vs_{away_name}.csv", mime="text/csv", use_container_width=True)
+
+    # --------------------------------------------------------------------------
+    # TAB 11: GLOSARIO EXHAUSTIVO DE APUESTAS Y ANALÍTICA
+    # --------------------------------------------------------------------------
+    with tab_glossary:
+        st.markdown("### 📖 Glosario Exhaustivo de Apuestas Deportivas y Analítica")
+        st.caption("Aprende el significado matemático y operativo de cada mercado, sigla y técnica del dashboard.")
+
+        c_glo1, c_glo2 = st.columns(2)
+        with c_glo1:
+            st.markdown("""
+            #### 🛡️ Mercados Principales de Ganador y Cobertura
+            * **DNB (Draw No Bet / Empate Anula Apuesta)**:
+              * **Local DNB**: Apuestas a favor del equipo local. Si el local **gana**, ganas la apuesta. Si el partido termina en **Empate**, la apuesta se anula y la casa te **devuelve el 100% de tu dinero apostado** (reembolso total). Solo pierdes si gana el Visitante.
+              * **Visitante DNB**: Igual para el visitante. Si hay empate, reembolso íntegro; si gana el visitante, cobras.
+              * *Fórmula de Probabilidad:* $P(\\text{Local DNB}) = \\frac{P(\\text{Local})}{P(\\text{Local}) + P(\\text{Visitante})}$.
+            * **1X2 (Línea de Dinero / Match Odds)**:
+              * **1**: Gana el equipo Local (Home).
+              * **X**: Empate (Draw).
+              * **2**: Gana el equipo Visitante (Away).
+            * **Doble Oportunidad (Double Chance)**:
+              * **1X**: Gana Local O Empatan (cubres 2 de los 3 resultados posibles).
+              * **12**: Gana Local O Gana Visitante (solo pierdes en caso de empate).
+              * **X2**: Empatan O Gana Visitante (cubres empate y victoria foránea).
+            * **HT / FT (Half Time / Full Time / Descanso y Final)**:
+              * Pronóstico combinado: quién va ganando al descanso (1T) y quién gana el partido completo (FT). Ejemplo: *1/X* (Local gana al 1T, pero el partido termina empatado).
+            * **BTTS (Both Teams To Score / Ambos Equipos Marcan)**:
+              * **Sí**: Ambos equipos anotan como mínimo 1 gol (1-1, 2-1, 3-2...).
+              * **No**: Al menos un equipo no marca (0-0, 1-0, 0-2...).
+
+            #### 🥅 Goles y Líneas Over / Under (+ / -)
+            * **Over (Más de)**: Se supera la línea de goles o estadísticas.
+              * *Over 0.5 Goles:* Al menos 1 gol.
+              * *Over 1.5 Goles:* 2 o más goles.
+              * *Over 2.5 Goles:* 3 o más goles (la línea clásica del fútbol).
+            * **Under (Menos de)**: No se supera la línea.
+              * *Under 2.5 Goles:* Máximo 2 goles en todo el partido (0, 1 o 2).
+              * *Under 3.5 Goles:* Máximo 3 goles en el partido.
+            * **Períodos (FT, 1T, 2T)**:
+              * **FT (Full Time):** Todo el partido (90 minutos reglamentarios + descuento).
+              * **1T (Primer Tiempo / HT):** Minuto 1 al 45+.
+              * **2T (Segundo Tiempo):** Minuto 46 al 90+.
+            """)
+
+        with c_glo2:
+            st.markdown("""
+            #### 🎯 Mercados Alternativos de Ineficiencia (Océano Azul)
+            * **SOT (Shots On Target / Tiros a Puerta / Tiros al Arco)**:
+              * Disparos directos que van con dirección a entrar a la portería y son contenidos por el portero o despejados en la línea por el último defensor.
+              * *Nota importante:* Los tiros que se estrellan en el poste o travesaño **no** son SOT para las casas de apuestas.
+            * **Remates / Disparos Totales**:
+              * Todo intento de tiro: a portería (SOT), desviados (fuera) y bloqueados por la defensa.
+            * **Faltas Cometidas vs Concedidas**:
+              * *Cometidas:* Infracciones que comete el equipo (crucial contra árbitros tarjeteros).
+              * *Concedidas / Recibidas:* Infracciones que el rival le hace al equipo (equipos con regateadores reciben muchas faltas).
+            * **Player Props (Props Individuales de Jugador)**:
+              * *Anytime Goalscorer:* El jugador anota un gol en cualquier momento.
+              * *SOT >= 1 o >= 2:* El jugador remata 1 o 2 veces a puerta.
+              * *Asistencia:* El jugador asiste formalmente un gol.
+
+            #### 🧮 Conceptos Estadísticos y Matemáticos de Apuestas
+            * **Cuota Justa (Fair Odds)**:
+              * Cuota matemática pura calculada por la probabilidad: $\\text{Cuota Justa} = 1 / P(\\text{Evento})$. Es la cuota donde no hay margen de la casa.
+            * **+EV (Positive Expected Value / Valor Esperado Positivo)**:
+              * Existe ventaja matemática cuando la cuota de la casa es mayor que la cuota justa: $\\text{EV} = (P \\times \\text{Cuota}) - 1 > 0$. Apostar constantemente con +EV genera beneficio a largo plazo.
+            * **Edge (Ventaja Estadística)**:
+              * Diferencia porcentual entre tu probabilidad y la probabilidad que la casa de apuestas tiene implícita en su cuota.
+            * **Criterio de Kelly Fraccional (1/4 Kelly)**:
+              * Fórmula matemática que calcula el porcentaje exacto de tu capital (Bankroll) a invertir para maximizar el crecimiento del dinero sin arriesgar jamás la bancarrota.
+            * **xG (Expected Goals / Goles Esperados)**:
+              * Probabilidad estadística de que una jugada termine en gol según distancia y ángulo. Ayuda a distinguir la suerte pasajera de la calidad real de un equipo.
+            """)
