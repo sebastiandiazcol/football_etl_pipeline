@@ -10,10 +10,13 @@ Incluye:
    - Partido Completo (FT)
    - Primer Tiempo (1T / HT)
    - Segundo Tiempo (2T / 2H)
-   - Mercados Océano Rojo (1X2, Doble Oportunidad, Over/Under, BTTS, HT/FT, DNB)
-   - Mercados Océano Azul (Tiros a puerta, Córners por tiempo, Tarjetas, Faltas, Team Totals)
+   - Tiros al Arco (SOT) y Disparos Totales (Over y Under con cuotas justas)
+   - Faltas Totales y por Equipo (Over y Under con cuotas justas)
+   - Tarjetas Amarillas y Rojas (Over y Under con cuotas justas)
+   - Córners FT y 1T (Over y Under con cuotas justas)
+   - Player Props con Cuotas Justas individuales: SOT >=1 y >=2, Faltas >=1 y >=2, Tarjeta y Gol
 4. Detección automática y destacados visuales de Alta Probabilidad (>= 68%) y Cuota Justa (1 / P).
-5. Exportación directa a Excel y CSV.
+5. Exportación directa a Excel (.xlsx) y CSV.
 """
 
 import os
@@ -35,27 +38,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS según principios de dashboard-design-skill (Paleta sobria, saliencia alta, tipografía clara)
+# Estilos CSS según principios de dashboard-design-skill
 st.markdown("""
 <style>
-    /* Estructura general */
     .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
-    
-    /* Tipografía y Título principal */
     .dash-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.2rem; }
-    .dash-title { font-size: 2.0rem; font-weight: 800; color: #0F172A; letter-spacing: -0.02em; margin: 0; }
+    .dash-title { font-size: 2.1rem; font-weight: 800; color: #0F172A; letter-spacing: -0.02em; margin: 0; }
     .dash-meta { font-size: 0.9rem; color: #64748B; margin-top: 0.2rem; }
     
-    /* KPI Strip */
     .kpi-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
     .kpi-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-    .kpi-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: #64748B; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .kpi-label { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; color: #64748B; letter-spacing: 0.04em; margin-bottom: 6px; }
     .kpi-value { font-size: 1.6rem; font-weight: 800; color: #0F172A; line-height: 1.1; }
     .kpi-sub { font-size: 0.85rem; font-weight: 600; color: #2563EB; margin-top: 4px; }
     .kpi-high { border-top: 3px solid #16A34A; }
     .kpi-blue { border-top: 3px solid #3B82F6; }
 
-    /* Tarjeta de validación de partido */
     .match-validation-card {
         background: #FFFFFF;
         border: 2px solid #3B82F6;
@@ -74,14 +72,6 @@ st.markdown("""
         margin-bottom: 14px;
     }
     .team-title { font-size: 1.45rem; font-weight: 800; color: #0F172A; }
-    
-    /* Badges */
-    .badge-high { background-color: #DCFCE7; color: #15803D; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 0.82rem; }
-    .badge-blue { background-color: #DBEAFE; color: #1E40AF; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 0.82rem; }
-    .badge-red { background-color: #FEE2E2; color: #B91C1C; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 0.82rem; }
-
-    /* Botón de volver */
-    .btn-return { margin-bottom: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -94,9 +84,9 @@ from analysis.probabilities import (
     compute_period_markets,
     compute_ht_ft_matrix,
     compute_blue_ocean_props,
+    compute_player_props_odds,
     get_all_high_probability_picks,
     compute_empirical_team_stats,
-    compute_player_props_summary,
     calculate_fair_odd
 )
 
@@ -232,7 +222,7 @@ def load_players_gold_data(team_ids: list):
 col_head1, col_head2 = st.columns([3, 1])
 with col_head1:
     st.markdown("<div class='dash-title'>⚽ Football Analytics & Betting Engine</div>", unsafe_allow_html=True)
-    st.markdown("<div class='dash-meta'>Cartelera estilo 365Scores · Desglose por Períodos (FT, 1T, 2T) · Océanos Azul y Rojo · Probabilidad Pura</div>", unsafe_allow_html=True)
+    st.markdown("<div class='dash-meta'>Cartelera 365Scores · Desglose por Períodos (FT, 1T, 2T) · Tiros, Faltas, Tarjetas, Córners y Player Props</div>", unsafe_allow_html=True)
 with col_head2:
     if st.session_state.selected_match and st.session_state.analysis_confirmed:
         if st.button("🔄 Volver a la Cartelera", use_container_width=True):
@@ -245,7 +235,6 @@ with col_head2:
 # PASO 1: CARTELERA 365SCORES (SI NO HAY ANÁLISIS CONFIRMADO)
 # ==============================================================================
 if not (st.session_state.selected_match and st.session_state.analysis_confirmed):
-    # Controles de filtrado
     c_f1, c_f2, c_f3, c_f4 = st.columns([1.1, 1.4, 1.6, 2])
     with c_f1:
         match_date = st.date_input("Fecha:", date.today(), label_visibility="collapsed")
@@ -269,7 +258,6 @@ if not (st.session_state.selected_match and st.session_state.analysis_confirmed)
     with c_f4:
         search_txt = st.text_input("🔍 Buscar equipo o torneo...", "").strip().lower()
 
-    # Filtrar
     filtered_games = fixtures
     if status_filter == "Programados / Por Jugar":
         filtered_games = [g for g in filtered_games if g["Categoría"] == "Programado"]
@@ -323,7 +311,7 @@ if not (st.session_state.selected_match and st.session_state.analysis_confirmed)
 if st.session_state.selected_match and not st.session_state.analysis_confirmed:
     match = st.session_state.selected_match
     st.markdown("---")
-    st.markdown("### 📋 Validación y Parámetros del Partido Seleccionado")
+    st.markdown("### 📋 Validación del Partido Seleccionado")
 
     st.markdown(f"""
     <div class='match-validation-card'>
@@ -346,7 +334,7 @@ if st.session_state.selected_match and not st.session_state.analysis_confirmed:
             min_value=3, max_value=25, value=st.session_state.confirmed_matches_history, step=1
         )
     with col_v2:
-        force_dl = st.checkbox("🔄 Forzar descarga completa desde la API", value=False)
+        force_dl = st.checkbox("🔄 Forzar actualización completa (API)", value=False)
     with col_v3:
         st.write("")
         st.write("")
@@ -367,7 +355,7 @@ if st.session_state.selected_match and not st.session_state.analysis_confirmed:
 
 
 # ==============================================================================
-# PASO 3: DESCARGA AUTOMATIZADA Y DASHBOARD DE MERCADOS COMPLETOS
+# PASO 3: DASHBOARD ANALÍTICO COMPLETO
 # ==============================================================================
 if st.session_state.selected_match and st.session_state.analysis_confirmed:
     match = st.session_state.selected_match
@@ -384,7 +372,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     need_dl = force_dl or df_home_exist.empty or df_away_exist.empty
 
     if need_dl:
-        prog_bar = st.progress(0, text="Descargando datos crudos...")
+        prog_bar = st.progress(0, text="Iniciando descarga de estadísticas...")
         status_txt = st.empty()
 
         status_txt.text(f"Descargando últimos {n_history} partidos de {home_name}...")
@@ -395,12 +383,12 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         def a_cb(c, t, d): prog_bar.progress(int(50 + (c / (t * 2)) * 100), text=f"[{away_name}] {d}")
         process_team_matches(away_id, max_matches=n_history, progress_callback=a_cb)
 
-        status_txt.text("Calculando promedios móviles y esquemas Gold...")
+        status_txt.text("Calculando promedios móviles y variables Gold...")
         compute_rolling_averages()
         compute_dim_referee()
         generate_dim_date()
 
-        prog_bar.progress(100, text="¡Completado con éxito!")
+        prog_bar.progress(100, text="¡Datos descargados y procesados con éxito!")
         time.sleep(1)
         prog_bar.empty()
         status_txt.empty()
@@ -410,7 +398,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     df_players = load_players_gold_data([home_id, away_id])
 
     if df_home.empty or df_away.empty:
-        st.warning("No hay suficientes partidos para generar el modelo estadístico.")
+        st.warning("No hay suficientes partidos históricos en la API para uno de los equipos.")
         st.stop()
 
     # Modelos por período (FT, 1T, 2T)
@@ -424,16 +412,14 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
 
     ht_ft_matrix = compute_ht_ft_matrix(model_ht, model_2h)
     blue_ocean = compute_blue_ocean_props(df_home, df_away, home_id, away_id)
+    player_props_df = compute_player_props_odds(df_players)
     high_prob_picks = get_all_high_probability_picks(model_ft, model_ht, model_2h, blue_ocean, threshold=68.0)
     stats_home = compute_empirical_team_stats(df_home, home_id)
     stats_away = compute_empirical_team_stats(df_away, away_id)
 
-    # --------------------------------------------------------------------------
-    # FIRST GLANCE: KPI STRIP (4 TARJETAS CON LAS MEJORES SELECCIONES)
-    # --------------------------------------------------------------------------
+    # KPI Strip
     st.markdown("---")
     top_pick_1 = high_prob_picks[0] if len(high_prob_picks) > 0 else {"Selección": "1X", "Probabilidad (%)": 75.0, "Cuota Justa": 1.33, "Período": "FT"}
-    top_pick_2 = high_prob_picks[1] if len(high_prob_picks) > 1 else {"Selección": "Over 0.5 Goles", "Probabilidad (%)": 72.0, "Cuota Justa": 1.38, "Período": "1T"}
     top_blue = [p for p in high_prob_picks if "Azul" in p["Tipo"]]
     top_blue_pick = top_blue[0] if top_blue else {"Selección": "Córners FT Over 7.5", "Probabilidad (%)": 71.0, "Cuota Justa": 1.41}
 
@@ -450,27 +436,38 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             <div class='kpi-sub'>{top_blue_pick['Selección']} · Cuota {top_blue_pick['Cuota Justa']}</div>
         </div>
         <div class='kpi-card'>
+            <div class='kpi-label'>🎯 Tiros al Arco / Faltas Est.</div>
+            <div class='kpi-value'>{blue_ocean['sot']['lam_total']} SOT</div>
+            <div class='kpi-sub'>{blue_ocean['fouls']['lam_total']} Faltas · {blue_ocean['corners']['lam_total']} Córners</div>
+        </div>
+        <div class='kpi-card'>
             <div class='kpi-label'>⚽ Goles Esperados (FT)</div>
             <div class='kpi-value'>{round(lam_h_ft + lam_a_ft, 2)}</div>
             <div class='kpi-sub'>{home_name} {lam_h_ft} - {lam_a_ft} {away_name}</div>
         </div>
-        <div class='kpi-card'>
-            <div class='kpi-label'>🎯 Ambos Marcan (BTTS)</div>
-            <div class='kpi-value'>{model_ft['btts']['Sí']['prob']}%</div>
-            <div class='kpi-sub'>Cuota Justa: {model_ft['btts']['Sí']['fair_odd']}</div>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # --------------------------------------------------------------------------
-    # TABS POR PERÍODO Y MERCADO
-    # --------------------------------------------------------------------------
-    tab_high, tab_ft, tab_ht, tab_2h, tab_blue, tab_props, tab_stats, tab_export = st.tabs([
+    # TABS ANALÍTICOS
+    (
+        tab_high,
+        tab_ft,
+        tab_ht,
+        tab_2h,
+        tab_sot,
+        tab_fouls,
+        tab_corners,
+        tab_props,
+        tab_stats,
+        tab_export
+    ) = st.tabs([
         "🔥 Top Alta Probabilidad (>=68%)",
         "⏱️ Partido Completo (FT)",
         "🌓 Primer Tiempo (1T)",
         "🌗 Segundo Tiempo (2T)",
-        "💎 Océanos Azules (Tiros, Córners, Faltas)",
+        "🎯 Tiros y Remates",
+        "🟨 Faltas y Tarjetas",
+        "🚩 Córners (FT & 1T)",
         "🏃 Player Props (Jugadores)",
         "📊 Marcados vs Concedidos",
         "💾 Descargas Excel / CSV"
@@ -481,7 +478,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     # --------------------------------------------------------------------------
     with tab_high:
         st.markdown("### 🔥 Todas las Selecciones de Alta Probabilidad Identificadas")
-        st.caption("Filtro algorítmico sobre todos los mercados (goles, resultados, tiros, córners) que superan el 68% de certeza matemática.")
+        st.caption("Filtro algorítmico de todas las líneas (Over y Under) en goles, resultados, tiros, faltas y córners que superan el 68% de certeza matemática.")
 
         if high_prob_picks:
             df_high = pd.DataFrame(high_prob_picks)[[
@@ -528,34 +525,24 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         st.markdown("---")
         c_ou, c_team = st.columns(2)
         with c_ou:
-            st.markdown("#### Goles Totales (Over / Under FT)")
-            ou_rows = []
-            for line in [0.5, 1.5, 2.5, 3.5, 4.5]:
-                o = model_ft['over_under'][f"Over {line}"]
-                u = model_ft['over_under'][f"Under {line}"]
-                ou_rows.append({
-                    "Línea": f"{line} Goles",
-                    "Over Prob (%)": f"{o['prob']}%",
-                    "Cuota Over": o['fair_odd'],
-                    "Under Prob (%)": f"{u['prob']}%",
-                    "Cuota Under": u['fair_odd']
-                })
-            st.dataframe(pd.DataFrame(ou_rows), use_container_width=True, hide_index=True)
+            st.markdown("#### Goles Totales (Over y Under con Cuota Justa)")
+            df_ou_ft = pd.DataFrame(model_ft["ou_table"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_ou_ft, use_container_width=True, hide_index=True)
 
         with c_team:
-            st.markdown("#### Goles por Equipo (Team Totals FT)")
-            tt_rows = []
-            for line in [0.5, 1.5, 2.5]:
-                ho = model_ft['home_totals'][f"Local Over {line}"]
-                ao = model_ft['away_totals'][f"Visitante Over {line}"]
-                tt_rows.append({
-                    "Línea": f"Over {line} Goles",
-                    f"{home_name} Prob": f"{ho['prob']}%",
-                    f"{home_name} Cuota": ho['fair_odd'],
-                    f"{away_name} Prob": f"{ao['prob']}%",
-                    f"{away_name} Cuota": ao['fair_odd'],
-                })
-            st.dataframe(pd.DataFrame(tt_rows), use_container_width=True, hide_index=True)
+            st.markdown(f"#### Goles de {home_name} (Local Totals)")
+            df_h_totals = pd.DataFrame(model_ft["home_totals"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_h_totals, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### Goles de {away_name} (Visitante Totals)")
+            df_a_totals = pd.DataFrame(model_ft["away_totals"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_a_totals, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         c_htft, c_scores = st.columns([1.2, 1])
@@ -601,19 +588,11 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         st.markdown("---")
         c_ou_ht, c_team_ht = st.columns(2)
         with c_ou_ht:
-            st.markdown("#### Goles Totales Primer Tiempo (Over / Under 1T)")
-            ou_ht_rows = []
-            for line in [0.5, 1.5, 2.5]:
-                o = model_ht['over_under'][f"Over {line}"]
-                u = model_ht['over_under'][f"Under {line}"]
-                ou_ht_rows.append({
-                    "Línea": f"{line} Goles 1T",
-                    "Over Prob (%)": f"{o['prob']}%",
-                    "Cuota Over": o['fair_odd'],
-                    "Under Prob (%)": f"{u['prob']}%",
-                    "Cuota Under": u['fair_odd']
-                })
-            st.dataframe(pd.DataFrame(ou_ht_rows), use_container_width=True, hide_index=True)
+            st.markdown("#### Goles Totales Primer Tiempo (Over y Under con Cuota Justa)")
+            df_ou_ht = pd.DataFrame(model_ht["ou_table"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_ou_ht, use_container_width=True, hide_index=True)
 
         with c_team_ht:
             st.markdown("#### Marcador Exacto al Descanso")
@@ -635,19 +614,11 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             st.dataframe(df_1x2_2h, use_container_width=True, hide_index=True)
 
         with c2:
-            st.markdown("#### Goles Totales Segundo Tiempo")
-            ou_2h_rows = []
-            for line in [0.5, 1.5, 2.5]:
-                o = model_2h['over_under'][f"Over {line}"]
-                u = model_2h['over_under'][f"Under {line}"]
-                ou_2h_rows.append({
-                    "Línea": f"{line} Goles 2T",
-                    "Over Prob (%)": f"{o['prob']}%",
-                    "Cuota Over": o['fair_odd'],
-                    "Under Prob (%)": f"{u['prob']}%",
-                    "Cuota Under": u['fair_odd']
-                })
-            st.dataframe(pd.DataFrame(ou_2h_rows), use_container_width=True, hide_index=True)
+            st.markdown("#### Goles Totales Segundo Tiempo (Over y Under)")
+            df_ou_2h = pd.DataFrame(model_2h["ou_table"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_ou_2h, use_container_width=True, hide_index=True)
 
         with c3:
             st.markdown("#### Ambos Marcan 2T")
@@ -658,67 +629,168 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             st.dataframe(df_btts_2h, use_container_width=True, hide_index=True)
 
     # --------------------------------------------------------------------------
-    # TAB: OCÉANOS AZULES (TIROS, CÓRNERS, FALTAS, TARJETAS)
+    # TAB: TIROS Y REMATES (SOT Y TOTALES)
     # --------------------------------------------------------------------------
-    with tab_blue:
-        st.markdown("### 💎 Mercados Océano Azul (Estadística Pura & Ineficiencias)")
-        st.caption("Mercados de props donde los modelos predictivos presentan mayores discrepancias con las casas de apuestas.")
+    with tab_sot:
+        st.markdown("### 🎯 Mercados de Tiros a Puerta (SOT) y Disparos Totales")
+        st.caption("Cuotas justas calculadas para cada línea tanto en Over como en Under según distribución de ataque/defensa.")
 
-        c_sot, c_corn = st.columns(2)
-        with c_sot:
-            st.markdown(f"#### 🎯 Tiros al Arco (Media estimada: {blue_ocean['means']['sot_total']})")
-            df_sot = pd.DataFrame(blue_ocean["shots_on_target"])[[
-                "Mercado", "Prob", "Cuota", "Media Estimada"
-            ]].rename(columns={"Prob": "Probabilidad (%)", "Cuota": "Cuota Justa"})
-            st.dataframe(df_sot, use_container_width=True, hide_index=True)
+        c_s1, c_s2 = st.columns(2)
+        with c_s1:
+            st.markdown(f"#### 🎯 Tiros al Arco Totales FT (Media estimada: {blue_ocean['sot']['lam_total']})")
+            df_sot_tot = pd.DataFrame(blue_ocean["sot"]["total"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sot_tot, use_container_width=True, hide_index=True)
 
-        with c_corn:
-            st.markdown(f"#### 🚩 Córners (Media FT: {blue_ocean['means']['corners_total']} | 1T: {blue_ocean['means']['corners_1t']})")
-            df_corn = pd.DataFrame(blue_ocean["corners"])[[
-                "Mercado", "Prob", "Cuota", "Media"
-            ]].rename(columns={"Prob": "Probabilidad (%)", "Cuota": "Cuota Justa", "Media": "Media Estimada"})
-            st.dataframe(df_corn, use_container_width=True, hide_index=True)
+            st.markdown(f"#### 🎯 Tiros al Arco 1T (Media estimada: {round(blue_ocean['sot']['lam_total'] * 0.47, 1)})")
+            df_sot_1t = pd.DataFrame(blue_ocean["sot"]["1t"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sot_1t, use_container_width=True, hide_index=True)
+
+        with c_s2:
+            st.markdown(f"#### 🏠 {home_name} - Tiros al Arco (Media: {blue_ocean['sot']['lam_home']})")
+            df_sot_h = pd.DataFrame(blue_ocean["sot"]["home"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sot_h, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### ✈️ {away_name} - Tiros al Arco (Media: {blue_ocean['sot']['lam_away']})")
+            df_sot_a = pd.DataFrame(blue_ocean["sot"]["away"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sot_a, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.markdown("#### 🟨 Disciplina (Faltas y Tarjetas)")
-        df_disc = pd.DataFrame(blue_ocean["discipline"])[[
-            "Mercado", "Prob", "Cuota", "Media"
-        ]].rename(columns={"Prob": "Probabilidad (%)", "Cuota": "Cuota Justa", "Media": "Media Estimada"})
-        st.dataframe(df_disc, use_container_width=True, hide_index=True)
+        st.markdown(f"#### 🚀 Disparos Totales (Remates Dentro + Fuera - Media FT: {blue_ocean['shots']['lam_total']})")
+        c_sh1, c_sh2, c_sh3 = st.columns(3)
+        with c_sh1:
+            st.markdown("**Remates Totales Partido:**")
+            df_sh_tot = pd.DataFrame(blue_ocean["shots"]["total"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sh_tot, use_container_width=True, hide_index=True)
+        with c_sh2:
+            st.markdown(f"**Remates de {home_name}:**")
+            df_sh_h = pd.DataFrame(blue_ocean["shots"]["home"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sh_h, use_container_width=True, hide_index=True)
+        with c_sh3:
+            st.markdown(f"**Remates de {away_name}:**")
+            df_sh_a = pd.DataFrame(blue_ocean["shots"]["away"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_sh_a, use_container_width=True, hide_index=True)
 
     # --------------------------------------------------------------------------
-    # TAB: PLAYER PROPS
+    # TAB: FALTAS Y TARJETAS
+    # --------------------------------------------------------------------------
+    with tab_fouls:
+        st.markdown("### 🟨 Mercados de Disciplina: Faltas y Tarjetas")
+        c_f1, c_f2 = st.columns(2)
+        with c_f1:
+            st.markdown(f"#### ⚠️ Faltas Totales FT (Media estimada: {blue_ocean['fouls']['lam_total']})")
+            df_foul_tot = pd.DataFrame(blue_ocean["fouls"]["total"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_foul_tot, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### 🏠 Faltas Cometidas por {home_name} (Media: {blue_ocean['fouls']['lam_home']})")
+            df_foul_h = pd.DataFrame(blue_ocean["fouls"]["home"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_foul_h, use_container_width=True, hide_index=True)
+
+        with c_f2:
+            st.markdown(f"#### 🟨 Tarjetas Amarillas Totales FT (Media: {blue_ocean['discipline']['lam_total']})")
+            df_card_tot = pd.DataFrame(blue_ocean["discipline"]["total"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_card_tot, use_container_width=True, hide_index=True)
+
+            st.markdown("#### 🟥 Tarjeta Roja en el Partido")
+            red_dict = blue_ocean["discipline"]["red_card"]
+            df_red = pd.DataFrame([
+                {"Opción": "Sí (Habrá Expulsión)", "Probabilidad": f"{red_dict['Sí (Habrá Expulsión)']['prob']}%", "Cuota Justa": red_dict['Sí (Habrá Expulsión)']['fair_odd']},
+                {"Opción": "No (Sin Expulsión)", "Probabilidad": f"{red_dict['No (Sin Expulsión)']['prob']}%", "Cuota Justa": red_dict['No (Sin Expulsión)']['fair_odd']},
+            ])
+            st.dataframe(df_red, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### ✈️ Faltas Cometidas por {away_name} (Media: {blue_ocean['fouls']['lam_away']})")
+            df_foul_a = pd.DataFrame(blue_ocean["fouls"]["away"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_foul_a, use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # TAB: CÓRNERS (SAQUES DE ESQUINA)
+    # --------------------------------------------------------------------------
+    with tab_corners:
+        st.markdown("### 🚩 Mercados de Córners (Saques de Esquina)")
+        c_c1, c_c2 = st.columns(2)
+        with c_c1:
+            st.markdown(f"#### 🚩 Córners Totales FT (Media estimada: {blue_ocean['corners']['lam_total']})")
+            df_corn_tot = pd.DataFrame(blue_ocean["corners"]["total"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_corn_tot, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### 🚩 Córners Primer Tiempo 1T (Media: {blue_ocean['corners']['lam_1t']})")
+            df_corn_1t = pd.DataFrame(blue_ocean["corners"]["1t"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_corn_1t, use_container_width=True, hide_index=True)
+
+        with c_c2:
+            st.markdown(f"#### 🏠 Córners a Favor de {home_name} (Media: {blue_ocean['corners']['lam_home']})")
+            df_corn_h = pd.DataFrame(blue_ocean["corners"]["home"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_corn_h, use_container_width=True, hide_index=True)
+
+            st.markdown(f"#### ✈️ Córners a Favor de {away_name} (Media: {blue_ocean['corners']['lam_away']})")
+            df_corn_a = pd.DataFrame(blue_ocean["corners"]["away"])[[
+                "Línea", "Over Prob (%)", "Cuota Over", "Under Prob (%)", "Cuota Under"
+            ]]
+            st.dataframe(df_corn_a, use_container_width=True, hide_index=True)
+
+    # --------------------------------------------------------------------------
+    # TAB: PLAYER PROPS (CON CUOTAS JUSTAS)
     # --------------------------------------------------------------------------
     with tab_props:
-        st.markdown("### 🏃 Player Props (Estadísticas Atómicas de Jugadores)")
-        if df_players.empty:
+        st.markdown("### 🏃 Player Props Individuales con Cuota Justa")
+        st.caption("Probabilidades exactas y cuotas justas por jugador para mercados de Tiros a Puerta, Faltas, Tarjetas y Gol.")
+
+        if player_props_df.empty:
             st.info("No hay datos de jugadores disponibles para esta muestra.")
         else:
-            team_filter = st.selectbox("Filtrar equipo:", ["Todos los equipos", home_name, away_name])
+            team_filter = st.selectbox("Filtrar por equipo:", ["Todos los equipos", home_name, away_name])
             filter_tid = home_id if team_filter == home_name else (away_id if team_filter == away_name else None)
 
-            p_summary = compute_player_props_summary(df_players, filter_tid)
+            p_summary = compute_player_props_odds(df_players, filter_tid)
             if not p_summary.empty:
-                p_summary = p_summary.rename(columns={
+                cols_display = [
+                    'player_name', 'matches', 'starts',
+                    'P(>=1 Tiro SOT)', 'P(>=2 Tiros SOT)',
+                    'P(>=1 Falta)', 'P(>=2 Faltas)',
+                    'P(Recibirá Tarjeta)', 'P(Anotará Gol)'
+                ]
+                df_props_view = p_summary[cols_display].rename(columns={
                     'player_name': 'Jugador',
                     'matches': 'Partidos',
                     'starts': 'Titular',
-                    'total_mins': 'Minutos',
-                    'goals': 'Goles',
-                    'shots_on_target': 'Tiros Puerta Totales',
-                    'sot_per_game': 'Tiros Puerta / Partido',
-                    'fouls': 'Faltas Totales',
-                    'fouls_per_game': 'Faltas / Partido',
-                    'yellow_cards': 'Tarjetas Amarillas'
                 })
-                st.dataframe(p_summary.drop(columns=['player_id'], errors='ignore'), use_container_width=True, hide_index=True)
+                st.dataframe(df_props_view, use_container_width=True, hide_index=True)
+            else:
+                st.info("No se encontraron registros para el filtro seleccionado.")
 
     # --------------------------------------------------------------------------
     # TAB: MARCADOS VS CONCEDIDOS (ESTADÍSTICA PURA)
     # --------------------------------------------------------------------------
     with tab_stats:
         st.markdown("### 📊 Balance Detallado de Marcados vs Concedidos por Período")
-
         c_bal1, c_bal2 = st.columns(2)
         with c_bal1:
             st.markdown(f"#### 🏠 {home_name} (Medias por partido)")
@@ -745,7 +817,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             st.write(f"- Hubo gol en el 1T: **{stats_away['rates']['over_0_5_ht_pct']}%**")
 
     # --------------------------------------------------------------------------
-    # TAB: DESCARGA
+    # TAB: DESCARGAS
     # --------------------------------------------------------------------------
     with tab_export:
         st.markdown("### 💾 Exportación Rápida de Datos")
