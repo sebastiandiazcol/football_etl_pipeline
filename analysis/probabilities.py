@@ -604,3 +604,96 @@ def compute_empirical_team_stats(df_team: pd.DataFrame, team_id: int) -> Dict[st
             "xg_against": stat_summary("xg_against"),
         }
     }
+
+
+def build_optimal_parlays(picks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Genera combinadas óptimas preconfiguradas (Sweet Spot, Océano Azul, Agresiva)
+    y provee la lógica para el constructor interactivo.
+    """
+    # Filtrar selecciones no redundantes para evitar mezclar Over y Under de lo mismo
+    unique_picks = []
+    seen_prefixes = set()
+    for p in picks:
+        base = p['Selección'].replace(" Over", "").replace(" Under", "").strip()
+        if base not in seen_prefixes:
+            seen_prefixes.add(base)
+            unique_picks.append(p)
+
+    def calc_ticket(leg_list, title, style_badge, target_desc):
+        if not leg_list:
+            return None
+        odd_tot = 1.0
+        prob_tot = 1.0
+        for leg in leg_list:
+            odd_tot *= leg['Cuota Justa']
+            prob_tot *= (leg['Probabilidad (%)'] / 100.0)
+
+        prob_pct = round(prob_tot * 100, 1)
+        odd_tot = round(odd_tot, 2)
+        fair_odd = calculate_fair_odd(prob_tot)
+
+        # Kelly fraccional para la combinada
+        b = odd_tot - 1.0
+        q = 1.0 - prob_tot
+        k_full = (b * prob_tot - q) / b if b > 0 else 0.0
+        k_quarter = max(round(k_full * 0.25 * 100, 1), 0.5)
+
+        return {
+            "nombre": title,
+            "badge": style_badge,
+            "descripcion": target_desc,
+            "patas": leg_list,
+            "num_patas": len(leg_list),
+            "cuota_total": odd_tot,
+            "probabilidad_pct": prob_pct,
+            "cuota_justa": fair_odd,
+            "kelly_sugerido_pct": f"{k_quarter}%"
+        }
+
+    # 1. Combinada Sweet Spot (2 selecciones de alta certeza, Cuota 2.00 - 2.80)
+    sweet_candidates = [p for p in unique_picks if 70.0 <= p['Probabilidad (%)'] <= 88.0 and p['Cuota Justa'] >= 1.25]
+    if len(sweet_candidates) < 2:
+        sweet_candidates = unique_picks[:2]
+    sweet_picks = sweet_candidates[:2] if len(sweet_candidates) >= 2 else unique_picks[:2]
+
+    ticket_sweet = calc_ticket(
+        sweet_picks,
+        "🎯 Combinada Sweet Spot (Doble de Valor)",
+        "🟢 Conservadora / Alto Valor",
+        "Diseñada para duplicar capital manteniendo una probabilidad de éxito > 45% con riesgo controlado."
+    )
+
+    # 2. Combinada Océano Azul (2 selecciones de ineficiencias de mercado)
+    blue_candidates = [p for p in unique_picks if "Azul" in p.get('Tipo', '') and p['Probabilidad (%)'] >= 68.0]
+    if len(blue_candidates) < 2:
+        blue_candidates = [p for p in unique_picks if any(k in p['Selección'] for k in ["Córners", "Tiros", "Faltas", "1T", "2T"])]
+    if len(blue_candidates) < 2:
+        blue_candidates = unique_picks[1:3] if len(unique_picks) >= 3 else unique_picks[:2]
+
+    ticket_blue = calc_ticket(
+        blue_candidates[:2] if len(blue_candidates) >= 2 else unique_picks[:2],
+        "💎 Combinada Océano Azul (Ineficiencias)",
+        "🔵 Océano Azul / Mercados Alternativos",
+        "Apuestas en tiros a puerta, faltas y córners donde las casas cometen más errores de cuota."
+    )
+
+    # 3. Combinada Agresiva / Multiplicadora (3 selecciones, Cuota 5.00 - 8.50)
+    aggr_candidates = [p for p in unique_picks if p['Cuota Justa'] >= 1.50]
+    if len(aggr_candidates) < 3:
+        aggr_candidates = unique_picks[:3]
+
+    ticket_aggr = calc_ticket(
+        aggr_candidates[:3] if len(aggr_candidates) >= 3 else unique_picks[:3],
+        "🚀 Combinada Multiplicador Agresivo (5x - 8x)",
+        "🔥 Alto Riesgo / Alta Recompensa",
+        "Busca multiplicar la inversión asumiendo varianza con stake estrictamente controlado (< 1% de banca)."
+    )
+
+    return {
+        "sweet_spot": ticket_sweet,
+        "oceano_azul": ticket_blue,
+        "agresiva": ticket_aggr,
+        "todas_disponibles": unique_picks
+    }
+

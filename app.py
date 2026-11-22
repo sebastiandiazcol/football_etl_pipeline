@@ -87,6 +87,56 @@ st.markdown("""
         padding: 18px;
         margin-top: 15px;
     }
+    
+    /* Combinadas / Parlays */
+    .parlay-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        margin-bottom: 16px;
+    }
+    .parlay-badge {
+        font-size: 0.74rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: inline-block;
+        margin-bottom: 10px;
+        letter-spacing: 0.03em;
+    }
+    .parlay-badge-green { background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; }
+    .parlay-badge-blue { background: #DBEAFE; color: #1D4ED8; border: 1px solid #BFDBFE; }
+    .parlay-badge-red { background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }
+    .parlay-odd {
+        font-size: 2.3rem;
+        font-weight: 900;
+        color: #0F172A;
+        line-height: 1;
+        margin: 6px 0 4px 0;
+    }
+    .parlay-prob {
+        font-size: 0.88rem;
+        color: #64748B;
+        font-weight: 600;
+        margin-bottom: 12px;
+    }
+    .parlay-item {
+        background: #F8FAFC;
+        border-left: 3px solid #2563EB;
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        font-size: 0.88rem;
+    }
+    .slip-box {
+        background: #0F172A;
+        color: #F8FAFC;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -102,6 +152,7 @@ from analysis.probabilities import (
     compute_blue_ocean_props,
     compute_player_props_odds,
     get_all_high_probability_picks,
+    build_optimal_parlays,
     compute_empirical_team_stats,
     calculate_fair_odd
 )
@@ -431,6 +482,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     blue_ocean = compute_blue_ocean_props(df_home, df_away, home_id, away_id)
     player_props_df = compute_player_props_odds(df_players)
     high_prob_picks = get_all_high_probability_picks(model_ft, model_ht, model_2h, blue_ocean, threshold=68.0)
+    optimal_parlays = build_optimal_parlays(high_prob_picks)
     stats_home = compute_empirical_team_stats(df_home, home_id)
     stats_away = compute_empirical_team_stats(df_away, away_id)
 
@@ -499,6 +551,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
     # --------------------------------------------------------------------------
     (
         tab_radar,
+        tab_parlays,
         tab_mc,
         tab_ft,
         tab_halves,
@@ -511,6 +564,7 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
         tab_glossary
     ) = st.tabs([
         "🎯 Radar de Oportunidades & Scanner +EV",
+        "🎟️ Combinadas Óptimas (+EV Parlays)",
         "🎲 Monte Carlo (10k Sims & Percentiles)",
         "⏱️ Partido Completo (Dixon-Coles)",
         "🌓 1T y 2T (Por Mitades)",
@@ -591,7 +645,203 @@ if st.session_state.selected_match and st.session_state.analysis_confirmed:
             st.markdown("</div>", unsafe_allow_html=True)
 
     # --------------------------------------------------------------------------
-    # TAB 2: MONTE CARLO (10,000 SIMULACIONES & PERCENTILES)
+    # TAB 2: COMBINADAS ÓPTIMAS & CONSTRUCTOR (+EV PARLAYS)
+    # --------------------------------------------------------------------------
+    with tab_parlays:
+        st.markdown("### 🎟️ Combinadas de Apuestas Óptimas y Constructor Interactivo")
+        st.caption("Estrategia cuantitativa: Selección algorítmica de combinadas en el 'Sweet Spot' (cuota 2.20 a 3.50) y constructor personalizado en tiempo real.")
+
+        st.markdown("""
+        > **💡 Principio Matemático de las Combinadas:**
+        > Las mejores combinadas tienen entre **2 y 3 selecciones** en cuotas entre **1.35 y 1.65** cada una. 
+        > Esto produce una **Cuota Total entre 2.20 y 3.20** manteniendo la probabilidad real acumulada superior al **45% - 50%**, permitiendo duplicar o triplicar el dinero sin quemar la banca.
+        """)
+
+        st.markdown("#### 🌟 3 Combinadas Recomendadas por el Modelo")
+        cp1, cp2, cp3 = st.columns(3)
+
+        # 1. Sweet Spot
+        with cp1:
+            sw = optimal_parlays.get("sweet_spot")
+            if sw:
+                st.markdown(f"""
+                <div class='parlay-card'>
+                    <div>
+                        <span class='parlay-badge parlay-badge-green'>{sw['badge']}</span>
+                        <div style='font-size:1.05rem; font-weight:800; color:#0F172A;'>{sw['nombre']}</div>
+                        <div class='parlay-odd'>@{sw['cuota_total']}</div>
+                        <div class='parlay-prob'>Probabilidad Real: <b>{sw['probabilidad_pct']}%</b> · Cuota Justa: <b>{sw['cuota_justa']}</b></div>
+                        <div style='margin-bottom:12px;'>
+                """, unsafe_allow_html=True)
+                for leg in sw['patas']:
+                    st.markdown(f"""
+                            <div class='parlay-item'>
+                                <b>{leg['Selección']}</b> <span style='color:#64748B;'>({leg['Período']})</span><br>
+                                <span style='font-weight:700; color:#15803D;'>P: {leg['Probabilidad (%)']}%</span> · Cuota: @{leg['Cuota Justa']}
+                            </div>
+                    """, unsafe_allow_html=True)
+                st.markdown(f"""
+                        </div>
+                    </div>
+                    <div style='font-size:0.8rem; color:#475569; background:#F1F5F9; padding:8px 10px; border-radius:6px;'>
+                        <b>Recomendación de Bankroll:</b> Stake {sw['kelly_sugerido_pct']} (1/4 Kelly).<br>
+                        <i>{sw['descripcion']}</i>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # 2. Océano Azul
+        with cp2:
+            bl = optimal_parlays.get("oceano_azul")
+            if bl:
+                st.markdown(f"""
+                <div class='parlay-card'>
+                    <div>
+                        <span class='parlay-badge parlay-badge-blue'>{bl['badge']}</span>
+                        <div style='font-size:1.05rem; font-weight:800; color:#0F172A;'>{bl['nombre']}</div>
+                        <div class='parlay-odd'>@{bl['cuota_total']}</div>
+                        <div class='parlay-prob'>Probabilidad Real: <b>{bl['probabilidad_pct']}%</b> · Cuota Justa: <b>{bl['cuota_justa']}</b></div>
+                        <div style='margin-bottom:12px;'>
+                """, unsafe_allow_html=True)
+                for leg in bl['patas']:
+                    st.markdown(f"""
+                            <div class='parlay-item'>
+                                <b>{leg['Selección']}</b> <span style='color:#64748B;'>({leg['Período']})</span><br>
+                                <span style='font-weight:700; color:#1D4ED8;'>P: {leg['Probabilidad (%)']}%</span> · Cuota: @{leg['Cuota Justa']}
+                            </div>
+                    """, unsafe_allow_html=True)
+                st.markdown(f"""
+                        </div>
+                    </div>
+                    <div style='font-size:0.8rem; color:#475569; background:#F1F5F9; padding:8px 10px; border-radius:6px;'>
+                        <b>Recomendación de Bankroll:</b> Stake {bl['kelly_sugerido_pct']} (1/4 Kelly).<br>
+                        <i>{bl['descripcion']}</i>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # 3. Agresiva
+        with cp3:
+            ag = optimal_parlays.get("agresiva")
+            if ag:
+                st.markdown(f"""
+                <div class='parlay-card'>
+                    <div>
+                        <span class='parlay-badge parlay-badge-red'>{ag['badge']}</span>
+                        <div style='font-size:1.05rem; font-weight:800; color:#0F172A;'>{ag['nombre']}</div>
+                        <div class='parlay-odd'>@{ag['cuota_total']}</div>
+                        <div class='parlay-prob'>Probabilidad Real: <b>{ag['probabilidad_pct']}%</b> · Cuota Justa: <b>{ag['cuota_justa']}</b></div>
+                        <div style='margin-bottom:12px;'>
+                """, unsafe_allow_html=True)
+                for leg in ag['patas']:
+                    st.markdown(f"""
+                            <div class='parlay-item'>
+                                <b>{leg['Selección']}</b> <span style='color:#64748B;'>({leg['Período']})</span><br>
+                                <span style='font-weight:700; color:#B91C1C;'>P: {leg['Probabilidad (%)']}%</span> · Cuota: @{leg['Cuota Justa']}
+                            </div>
+                    """, unsafe_allow_html=True)
+                st.markdown(f"""
+                        </div>
+                    </div>
+                    <div style='font-size:0.8rem; color:#475569; background:#F1F5F9; padding:8px 10px; border-radius:6px;'>
+                        <b>Recomendación de Bankroll:</b> Stake {ag['kelly_sugerido_pct']} (Riesgo estricto < 1%).<br>
+                        <i>{ag['descripcion']}</i>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("#### 🛠️ Constructor Interactivo de Combinadas Personalizadas")
+        st.caption("Selecciona las patas que deseas combinar de la lista de oportunidades y calcula tu ventaja matemática en vivo:")
+
+        # Lista de opciones formateadas
+        available_picks = optimal_parlays.get("todas_disponibles", high_prob_picks)
+        options_map = {
+            f"{p['Selección']} ({p['Período']}) - P: {p['Probabilidad (%)']}% | Cuota: @{p['Cuota Justa']}": p
+            for p in available_picks
+        }
+
+        # Preseleccionar por defecto las 2 primeras patas del sweet spot
+        default_keys = []
+        if sw and sw['patas']:
+            for leg in sw['patas']:
+                for k in options_map:
+                    if leg['Selección'] in k and leg['Período'] in k:
+                        default_keys.append(k)
+                        break
+
+        col_build_sel, col_build_calc = st.columns([1.4, 1])
+        with col_build_sel:
+            selected_parlay_keys = st.multiselect(
+                "Selecciona 2 o más opciones para combinar:",
+                options=list(options_map.keys()),
+                default=default_keys if default_keys else list(options_map.keys())[:2],
+                help="Elige entre 2 y 4 selecciones para mantener una ventaja estadística positiva (+EV)."
+            )
+
+            stake_amount = st.number_input(
+                "Monto a apostar en esta combinada ($):",
+                min_value=1.0,
+                max_value=50000.0,
+                value=25.0,
+                step=5.0
+            )
+
+        with col_build_calc:
+            if len(selected_parlay_keys) >= 2:
+                sel_legs = [options_map[k] for k in selected_parlay_keys]
+                comb_odd = 1.0
+                comb_prob = 1.0
+                for leg in sel_legs:
+                    comb_odd *= leg['Cuota Justa']
+                    comb_prob *= (leg['Probabilidad (%)'] / 100.0)
+
+                comb_odd = round(comb_odd, 2)
+                comb_prob_pct = round(comb_prob * 100, 1)
+                comb_fair_odd = calculate_fair_odd(comb_prob)
+                payout = round(stake_amount * comb_odd, 2)
+                profit = round(payout - stake_amount, 2)
+
+                # Kelly
+                b_c = comb_odd - 1.0
+                q_c = 1.0 - comb_prob
+                k_c_full = (b_c * comb_prob - q_c) / b_c if b_c > 0 else 0.0
+                k_c_quarter = max(round(k_c_full * 0.25 * 100, 2), 0.5)
+
+                st.markdown(f"""
+                <div class='slip-box'>
+                    <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:#94A3B8; font-weight:700;'>
+                        🎟️ BOLETO DE APUESTA ({len(sel_legs)} Selecciones)
+                    </div>
+                    <div style='font-size:2.4rem; font-weight:900; color:#38BDF8; margin: 4px 0;'>
+                        @{comb_odd}
+                    </div>
+                    <div style='font-size:0.85rem; color:#CBD5E1; margin-bottom:12px;'>
+                        Probabilidad Real del Boleto: <b style='color:#4ADE80;'>{comb_prob_pct}%</b> · Cuota Justa: <b>{comb_fair_odd}</b>
+                    </div>
+                    <hr style='border-color:#334155; margin: 10px 0;'>
+                    <div style='display:flex; justify-content:space-between; margin-bottom:6px;'>
+                        <span style='color:#94A3B8;'>Monto Apostado:</span>
+                        <span style='font-weight:700;'>${stake_amount}</span>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; margin-bottom:6px;'>
+                        <span style='color:#94A3B8;'>Ganancia Neta:</span>
+                        <span style='font-weight:800; color:#4ADE80;'>+${profit}</span>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
+                        <span style='color:#94A3B8;'>Retorno Total:</span>
+                        <span style='font-weight:900; font-size:1.1rem; color:#38BDF8;'>${payout}</span>
+                    </div>
+                    <div style='font-size:0.75rem; background:#1E293B; padding:8px 10px; border-radius:6px; color:#94A3B8;'>
+                        <b>Gestión de Riesgo:</b> Stake sugerido: <b>{k_c_quarter}%</b> de tu banca total.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("⚠️ Selecciona al menos 2 opciones en la columna izquierda para generar el cálculo de tu combinada.")
+
+    # --------------------------------------------------------------------------
+    # TAB 3: MONTE CARLO (10,000 SIMULACIONES & PERCENTILES)
     # --------------------------------------------------------------------------
     with tab_mc:
         st.markdown("### 🎲 Simulación de Monte Carlo (10,000 Partidos Vectorizados)")
